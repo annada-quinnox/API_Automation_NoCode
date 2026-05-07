@@ -1,0 +1,8 @@
+Flask==2.3.3
+flask-cors
+openpyxl
+jsonschema
+pytest
+jinja2
+pyodbc>=4.0.39
+requests
