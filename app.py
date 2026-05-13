@@ -1,34 +1,59 @@
 from flask import Flask, render_template, request, jsonify, send_file
-# import os  # Unused import
-# from werkzeug.utils import secure_filename  # Unused import
 from flask_cors import CORS
-from testcaseengine import generate_testcases
+from testcaseengine import generate_testcases, flatten
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
 import json
 import re
 import requests
-# from urllib.parse import urljoin  # Unused import - custom build_url() used instead
 from datetime import datetime
 from database import get_database, initialize_database
 
-def flatten(data, parent_key="", sep="."):
-    items = {}
-    if isinstance(data, dict):
-        for k, v in data.items():
-            # Ensure key is a string to avoid concatenation errors
-            str_k = str(k)
-            new_key = parent_key + sep + str_k if parent_key else str_k
-            if isinstance(v, dict):
-                items.update(flatten(v, new_key, sep=sep))
-            elif isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
-                items.update(flatten(v[0], new_key, sep=sep))
-            else:
-                items[new_key] = v
-    return items
+
+def api_success(data=None, status_code=200, **kwargs):
+    """Build a consistent success JSON response.
+    
+    Args:
+        data: Primary data dict to include. Extra kwargs are merged in.
+        status_code: HTTP status code (default 200).
+    
+    Returns:
+        Tuple of (flask.Response, status_code)
+    """
+    response = {'success': True}
+    if data is not None:
+        response.update(data)
+    response.update(kwargs)
+    return jsonify(response), status_code
+
+
+def api_error(message, status_code=400):
+    """Build a consistent error JSON response.
+    
+    Args:
+        message: Error message string.
+        status_code: HTTP status code (default 400).
+    
+    Returns:
+        Tuple of (flask.Response, status_code)
+    """
+    return jsonify({'success': False, 'error': str(message)}), status_code
+
 
 def get_data_type(value):
+    """Determine the canonical data type of a value for type-checking comparisons.
+
+    Maps Python types to JSON-compatible type names. Boolean is checked before
+    integer because ``bool`` is a subclass of ``int`` in Python.
+
+    Args:
+        value: Any Python value (None, bool, int, float, list, dict, str, etc.)
+
+    Returns:
+        One of: ``'null'``, ``'boolean'``, ``'integer'``, ``'number'``,
+        ``'array'``, ``'object'``, or ``'string'``.
+    """
     if value is None: return 'null'
     if isinstance(value, bool): return 'boolean'
     # Check boolean before integer because bool is a subclass of int in Python
@@ -39,6 +64,19 @@ def get_data_type(value):
     return 'string'
 
 def parse_query_params(input_data):
+    """Parse a query-string-like input into a dictionary of typed parameters.
+
+    Handles multiple input formats: raw query strings (``?key=val&...``),
+    full URLs, ``"METHOD URL"`` strings, or already-parsed dicts. Values are
+    auto-converted to ``bool``, ``int``, or ``float`` when possible.
+
+    Args:
+        input_data: A query string, URL, ``"METHOD URL"`` string, or dict.
+
+    Returns:
+        ``dict`` of parameter name to typed value. Returns an empty dict when
+        no parseable key-value pairs are found.
+    """
     if not isinstance(input_data, str):
         return input_data if isinstance(input_data, dict) else {}
     
@@ -84,6 +122,19 @@ def parse_query_params(input_data):
     return params
 
 def validate_against_configs(input_data, field_configs, source='body'):
+    """Validate input data against expected field type/required configurations.
+
+    Flattens nested JSON payloads and checks each configured field for correct
+    type and presence. Supports both body (JSON) and query-string sources.
+
+    Args:
+        input_data: JSON string, dict, or query string to validate.
+        field_configs: Dict mapping field paths to ``{"type": ..., "required": ...}``.
+        source: ``'body'`` or ``'query'`` — controls parsing strategy.
+
+    Returns:
+        ``(is_valid: bool, errors: list[str])`` tuple.
+    """
     if not input_data or not field_configs:
         return True, []
     
@@ -155,6 +206,18 @@ def validate_against_configs(input_data, field_configs, source='body'):
     return True, []
 
 def validate_input_types(input_data, original_payload):
+    """Check that input field types match the types in the original payload.
+
+    Used for Positive test cases to ensure the user hasn't accidentally changed
+    a field's data type (e.g., sending a string where an integer is expected).
+
+    Args:
+        input_data: The user-supplied input (JSON string or dict).
+        original_payload: The reference payload (JSON string or dict).
+
+    Returns:
+        ``(is_valid: bool, errors: list[str])`` tuple.
+    """
     if not input_data or not original_payload:
         return True, []
     
@@ -266,31 +329,17 @@ def generate_test_cases():
         data = request.get_json()
         print(f"Received generation request data: {json.dumps(data, indent=2)}")
         test_cases = generator.generate_test_cases(data)
-        return jsonify({
-            'success': True,
-            'test_cases': test_cases,
-            'count': len(test_cases)
-        })
+        return api_success({'test_cases': test_cases, 'count': len(test_cases)})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
 @app.route('/api/test-cases', methods=['GET'])
 def get_test_cases():
     try:
         test_cases = generator.get_test_cases()
-        return jsonify({
-            'success': True,
-            'test_cases': test_cases,
-            'count': len(test_cases)
-        })
+        return api_success({'test_cases': test_cases, 'count': len(test_cases)})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
 @app.route('/api/health', methods=['GET'])
 def health():
@@ -405,12 +454,107 @@ def get_test_case_source_info(test_case):
     return source, additional_info
 
 def format_input_body(input_data):
+    """Format input data for display in Excel cells."""
     if isinstance(input_data, dict):
         return json.dumps(input_data, indent=2)
     elif isinstance(input_data, list):
         return json.dumps(input_data, indent=2)
     else:
         return str(input_data)
+
+
+def _create_excel_styles():
+    """Create and return reusable Excel style objects."""
+    return {
+        'header_fill': PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid"),
+        'header_font': Font(bold=True, color="FFFFFF", size=11),
+        'border': Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        ),
+        'center_align': Alignment(horizontal="center", vertical="center", wrap_text=True),
+        'left_align': Alignment(horizontal="left", vertical="center", wrap_text=True),
+    }
+
+
+def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_base_url=True):
+    """Build an Excel workbook from test cases.
+    
+    Args:
+        test_cases: List of test case dicts
+        method: HTTP method string
+        endpoint: API endpoint string
+        base_url: Base URL string
+        include_base_url: Whether to include the Base Url column
+        
+    Returns:
+        BytesIO containing the Excel file data
+    """
+    styles = _create_excel_styles()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "API Test Cases"
+
+    if include_base_url:
+        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type", "Base Url",
+                    "Endpoint", "Request Body", "Expected Response Code", "Expected Status", "Status"]
+    else:
+        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type",
+                    "Endpoint", "Request Body", "Expected Response Code", "Expected Status", "Status"]
+
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill = styles['header_fill']
+        cell.font = styles['header_font']
+        cell.alignment = styles['center_align']
+        cell.border = styles['border']
+
+    for tc in test_cases:
+        request_body = format_input_body(tc.get("input", {}))
+        response_codes = extract_response_code(tc.get("expected", ""))
+        response_code_str = ", ".join(response_codes) if isinstance(response_codes, list) else str(response_codes)
+
+        if include_base_url:
+            row_data = [
+                tc.get("id"), method, tc.get("scenario"), tc.get("type"),
+                tc.get("baseUrl", base_url), endpoint, request_body,
+                response_code_str, tc.get("expected"), ""
+            ]
+        else:
+            row_data = [
+                tc.get("id"), method, tc.get("scenario"), tc.get("type"),
+                endpoint, request_body, response_code_str, tc.get("expected"), ""
+            ]
+        ws.append(row_data)
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.border = styles['border']
+            cell.alignment = styles['left_align']
+
+    col_widths = {'A': 12, 'B': 12, 'C': 35, 'D': 12}
+    if include_base_url:
+        col_widths.update({'E': 25, 'F': 20, 'G': 50, 'H': 16, 'I': 30, 'J': 10})
+    else:
+        col_widths.update({'E': 20, 'F': 50, 'G': 16, 'H': 30, 'I': 10})
+
+    for col_letter, width in col_widths.items():
+        ws.column_dimensions[col_letter].width = width
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+def _generate_excel_filename(method, endpoint, prefix="TestCases"):
+    """Generate a timestamped Excel filename."""
+    endpoint_clean = endpoint.strip('/').replace('/', '_').replace(' ', '_').upper()
+    now = datetime.now()
+    return f"{method}_{endpoint_clean}_{prefix}_{now.strftime('%Y-%m-%d')}_{now.strftime('%H-%M-%S')}.xlsx"
+
 
 @app.route('/api/export-excel', methods=['POST'])
 def export_excel():
@@ -420,77 +564,13 @@ def export_excel():
         test_cases = generator.generate_test_cases(data)
         print(f"[DEBUG] Generated {len(test_cases)} test cases")
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "API Test Cases"
-
-        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=11)
-        border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type", "Base Url", "Endpoint", "Request Body", "Expected Response Code", "Expected Status", "Status"]
-        ws.append(headers)
-
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_align
-            cell.border = border
-
-        http_method = data.get('method', 'GET')
-        
-        for tc in test_cases:
-            request_body = format_input_body(tc.get("input", {}))
-            response_codes = extract_response_code(tc.get("expected", ""))
-            # Convert list to comma-separated string for Excel
-            response_code_str = ", ".join(response_codes) if isinstance(response_codes, list) else str(response_codes)
-            
-            ws.append([
-                tc.get("id"),
-                http_method,
-                tc.get("scenario"),
-                tc.get("type"),
-                tc.get("baseUrl", data.get("baseUrl", "")),
-                data.get("endpoint", "/api/test"),
-                request_body,
-                response_code_str,
-                tc.get("expected"),
-                "" # Status
-            ])
-
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-            for cell in row:
-                cell.border = border
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-
-        ws.column_dimensions['A'].width = 12
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 35
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 25
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 50
-        ws.column_dimensions['H'].width = 16
-        ws.column_dimensions['I'].width = 30
-        ws.column_dimensions['J'].width = 10
-
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
+        method = data.get('method', 'GET')
         endpoint = data.get('endpoint', '/api/test')
-        endpoint_clean = endpoint.strip('/').replace('/', '_').replace(' ', '_').upper()
-        now = datetime.now()
-        date_str = now.strftime('%Y-%m-%d')
-        time_str = now.strftime('%H-%M-%S')
-        filename = f"{http_method}_{endpoint_clean}_TestCases_{date_str}_{time_str}.xlsx"
-        
+        base_url = data.get('baseUrl', data.get('base_url', ''))
+
+        output = _build_test_case_excel(test_cases, method, endpoint, base_url, include_base_url=True)
+        filename = _generate_excel_filename(method, endpoint)
+
         return send_file(
             output,
             download_name=filename,
@@ -498,10 +578,7 @@ def export_excel():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
 @app.route('/api/save-to-database', methods=['POST'])
 def save_to_database():
@@ -519,10 +596,7 @@ def save_to_database():
         print(f"[DEBUG] Generated {len(test_cases)} test cases for database save")
         
         if not test_cases:
-            return jsonify({
-                'success': False,
-                'message': 'No test cases generated to save'
-            }), 400
+            return api_error('No test cases generated to save')
         
         # Prepare session data
         session_data = {
@@ -538,26 +612,14 @@ def save_to_database():
         success, message, session_id, saved_count = db.save_test_cases(session_data, test_cases)
         
         if success:
-            return jsonify({
-                'success': True,
-                'session_id': session_id,
-                'message': message,
-                'saved_count': saved_count
-            })
+            return api_success({'session_id': session_id, 'message': message, 'saved_count': saved_count})
         else:
-            return jsonify({
-                'success': False,
-                'message': message,
-                'saved_count': saved_count
-            }), 500
+            return api_error(message, status_code=500)
             
     except Exception as e:
         error_msg = f"Database save error: {str(e)}"
         print(f"[ERROR] {error_msg}")
-        return jsonify({
-            'success': False,
-            'message': error_msg
-        }), 500
+        return api_error(error_msg, status_code=500)
 
 @app.route('/api/database-sessions', methods=['GET'])
 def get_database_sessions():
@@ -582,21 +644,12 @@ def get_database_sessions():
             method_filter=method_filter
         )
         
-        return jsonify({
-            'success': True,
-            'sessions': sessions,
-            'total': total,
-            'limit': limit,
-            'offset': offset
-        })
+        return api_success({'sessions': sessions, 'total': total, 'limit': limit, 'offset': offset})
         
     except Exception as e:
         error_msg = f"Failed to retrieve sessions: {str(e)}"
         print(f"[ERROR] {error_msg}")
-        return jsonify({
-            'success': False,
-            'message': error_msg
-        }), 500
+        return api_error(error_msg, status_code=500)
 
 @app.route('/api/database-test-cases/<session_id>', methods=['GET'])
 def get_session_test_cases(session_id):
@@ -609,25 +662,14 @@ def get_session_test_cases(session_id):
         session_info, test_cases = db.get_test_cases(session_id)
         
         if session_info is None:
-            return jsonify({
-                'success': False,
-                'message': f"Session {session_id} not found"
-            }), 404
+            return api_error(f"Session {session_id} not found", status_code=404)
         
-        return jsonify({
-            'success': True,
-            'session_info': session_info,
-            'test_cases': test_cases,
-            'count': len(test_cases)
-        })
+        return api_success({'session_info': session_info, 'test_cases': test_cases, 'count': len(test_cases)})
         
     except Exception as e:
         error_msg = f"Failed to retrieve test cases: {str(e)}"
         print(f"[ERROR] {error_msg}")
-        return jsonify({
-            'success': False,
-            'message': error_msg
-        }), 500
+        return api_error(error_msg, status_code=500)
 
 @app.route('/api/database-health', methods=['GET'])
 def database_health():
@@ -637,15 +679,9 @@ def database_health():
     """
     try:
         success, message = initialize_database()
-        return jsonify({
-            'success': success,
-            'message': message
-        })
+        return api_success({'message': message}) if success else api_error(message, status_code=500)
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f"Database health check failed: {str(e)}"
-        }), 500
+        return api_error(f"Database health check failed: {str(e)}", status_code=500)
 
 @app.route('/api/download-excel', methods=['POST'])
 def download_excel():
@@ -656,78 +692,10 @@ def download_excel():
         method = data.get('method', 'GET')
         
         if not test_cases:
-            return jsonify({
-                'success': False,
-                'error': 'No test cases provided'
-            }), 400
+            return api_error('No test cases provided')
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "API Test Cases"
-
-        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=11)
-        border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type", "Endpoint", "Request Body", "Expected Response Code", "Expected Status", "Status"]
-        ws.append(headers)
-
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_align
-            cell.border = border
-
-        for tc in test_cases:
-            request_body = format_input_body(tc.get("input", {}))
-            response_codes = extract_response_code(tc.get("expected", ""))
-            # Convert list to comma-separated string for Excel
-            response_code_str = ", ".join(response_codes) if isinstance(response_codes, list) else str(response_codes)
-            
-            ws.append([
-                tc.get("id"),
-                method,
-                tc.get("scenario"),
-                tc.get("type"),
-                tc.get("baseUrl", ""),
-                endpoint,
-                request_body,
-                response_code_str,
-                tc.get("expected"),
-                "" # Empty Status column
-            ])
-
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-            for cell in row:
-                cell.border = border
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-
-        ws.column_dimensions['A'].width = 12
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 35
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 25
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 50
-        ws.column_dimensions['H'].width = 16
-        ws.column_dimensions['I'].width = 30
-        ws.column_dimensions['J'].width = 10
-
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        endpoint_clean = endpoint.strip('/').replace('/', '_').replace(' ', '_').upper()
-        now = datetime.now()
-        date_str = now.strftime('%Y-%m-%d')
-        time_str = now.strftime('%H-%M-%S')
-        filename = f"{method}_{endpoint_clean}_TestCases_{date_str}_{time_str}.xlsx"
+        output = _build_test_case_excel(test_cases, method, endpoint, include_base_url=False)
+        filename = _generate_excel_filename(method, endpoint)
         return send_file(
             output,
             download_name=filename,
@@ -735,10 +703,7 @@ def download_excel():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
 @app.route('/api/export-results', methods=['POST'])
 def export_results():
@@ -750,10 +715,7 @@ def export_results():
         method = data.get('method', 'GET')
         
         if not results:
-            return jsonify({
-                'success': False,
-                'error': 'No results provided'
-            }), 400
+            return api_error('No results provided')
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -852,20 +814,17 @@ def export_results():
         error_details = traceback.format_exc()
         print(f"[ERROR] export-excel failed: {str(e)}")
         print(f"[ERROR] Traceback:\n{error_details}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
 @app.route('/api/upload-excel', methods=['POST'])
 def upload_excel():
     try:
         if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file part'}), 400
+            return api_error('No file part')
         
         file = request.files['file']
         if file.filename == '':
-            return jsonify({'success': False, 'error': 'No selected file'}), 400
+            return api_error('No selected file')
         
         if file and file.filename.endswith(('.xlsx', '.xls')):
             wb = openpyxl.load_workbook(file)
@@ -918,15 +877,11 @@ def upload_excel():
                 
                 test_cases.append(tc)
 
-            return jsonify({
-                'success': True,
-                'test_cases': test_cases,
-                'count': len(test_cases)
-            })
+            return api_success({'test_cases': test_cases, 'count': len(test_cases)})
         
-        return jsonify({'success': False, 'error': 'Invalid file format'}), 400
+        return api_error('Invalid file format')
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return api_error(e)
 
 @app.route('/api/execute-tests', methods=['POST'])
 def execute_tests():
@@ -940,16 +895,10 @@ def execute_tests():
         base_url = data.get('baseUrl') or data.get('base_url') or 'mock'
 
         if not endpoint:
-            return jsonify({
-                'success': False,
-                'error': 'Endpoint is required'
-            }), 400
+            return api_error('Endpoint is required')
 
         if not test_cases:
-            return jsonify({
-                'success': False,
-                'error': 'No test cases provided'
-            }), 400
+            return api_error('No test cases provided')
 
         results = []
         original_payload = data.get('originalPayload')
@@ -966,116 +915,96 @@ def execute_tests():
             result = execute_single_test(endpoint, method, test_case, environment, base_url, original_payload, field_configs)
             results.append(result)
 
-        return jsonify({
-            'success': True,
-            'results': results
-        })
+        return api_success({'results': results})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return api_error(e)
 
-def generate_mock_response(test_case, method, original_payload=None, field_configs=None):
-    expected = test_case.get('expected', 'Success response')
+# --- Mock response dispatch tables ---
+
+# Maps specific HTTP status codes to their standard error response bodies
+_STATUS_ERROR_BODY = {
+    401: {"error": "Unauthorized", "message": "Missing or invalid authentication token"},
+    403: {"error": "Forbidden", "message": "You do not have permission to access this resource"},
+    404: {"error": "Not Found", "message": "The requested resource was not found"},
+    409: {"error": "Conflict", "message": "Resource already exists or state conflict"},
+    415: {"error": "Unsupported Media Type", "message": "Content-Type header is missing or invalid"},
+    429: {"error": "Too Many Requests", "message": "Rate limit exceeded"},
+}
+
+# Maps scenario keywords to (status_code, error_name) for negative test type fallback
+_SCENARIO_ERROR_RULES = [
+    (['Authorization', 'token'], 401, "Unauthorized"),
+    (['Forbidden', 'Role', 'Permission'], 403, "Forbidden"),
+    (['Not Found', 'non-existing'], 404, "Not Found"),
+    (['Rate', 'Limit'], 429, "Too Many Requests"),
+    (['Content-Type'], 415, "Unsupported Media Type"),
+]
+
+
+def _run_mock_validation(payload, method, test_type, field_configs, original_payload):
+    """Run validation checks for mock response generation.
     
-    # For database test cases, check for expected_status field
-    if expected == 'N/A' or not expected:
-        expected = test_case.get('expected_status', 'N/A')
+    Returns a list of error strings, or empty list if validation passes.
+    """
+    errors = []
     
-    test_type = test_case.get('type', 'Positive')
-    scenario = test_case.get('scenario', '')
-    payload = test_case.get('input', {})
-    
-    # Extract expected status code if available
-    expected_codes = extract_response_code(expected)
-    validation_errors = []
-    
-    # Priority validation against explicit user configurations
     if field_configs:
         source = 'query' if method == 'GET' else 'body'
-        is_valid, errors = validate_against_configs(payload, field_configs, source=source)
+        is_valid, validation_errors = validate_against_configs(payload, field_configs, source=source)
         if not is_valid:
-            validation_errors = errors
+            errors = validation_errors
 
-    # Fallback validation against original payload types
-    if not validation_errors and test_type == 'Positive' and original_payload:
+    if not errors and test_type == 'Positive' and original_payload:
         source = 'query' if method == 'GET' else 'body'
         if source == 'query':
-            # For query params, parse them first for type validation
             parsed_payload = parse_query_params(payload)
-            is_valid, errors = validate_input_types(parsed_payload, original_payload)
+            is_valid, validation_errors = validate_input_types(parsed_payload, original_payload)
         else:
-            is_valid, errors = validate_input_types(payload, original_payload)
-            
+            is_valid, validation_errors = validate_input_types(payload, original_payload)
         if not is_valid:
-            validation_errors = errors
+            errors = validation_errors
 
-    if validation_errors:
-        error_msg = "\n".join([f"• {err}" for err in validation_errors])
-        return {
-            'statusCode': 400,
-            'body': json.dumps({"error": "Bad Request", "message": "Please correct the following validation errors and try again.", "details": validation_errors}),
-            'expected': expected,
-            'validation_failed': True,
-            'validation_error': f"❌ Invalid data type\n\nPlease correct the following validation errors and try again.\n\n{error_msg}"
-        }
+    return errors
 
-    # Handle expected codes - take the first one if available and not "N/A"
-    if expected_codes and "N/A" not in expected_codes:
-        try:
-            # Take the first expected code for mock response
-            first_code = expected_codes[0]
-            status_code = int(first_code)
-            
-            # Select appropriate mock body based on status code
-            if 200 <= status_code < 300:
-                if status_code == 204:
-                    body = ""
-                elif method in ['POST', 'PUT', 'PATCH']:
-                    if original_payload and isinstance(original_payload, (dict, list)):
-                        # If we have an original payload, return it as the mock response for realism
-                        body = json.dumps(original_payload)
-                    else:
-                        body = json.dumps({"message": "Resource processed successfully", "id": "mock_001", "status": "success"})
-                else:
-                    # For GET/others, return realistic data if available
-                    if original_payload and isinstance(original_payload, (dict, list)):
-                        # For GET/others, if original was a list, return list. If original was object, return as list of one for typical GET list APIs
-                        if isinstance(original_payload, list):
-                            body = json.dumps(original_payload)
-                        else:
-                            body = json.dumps([original_payload])
-                    else:
-                        body = json.dumps({"status": "success", "data": []})
-            elif status_code == 401:
-                body = json.dumps({"error": "Unauthorized", "message": "Missing or invalid authentication token"})
-            elif status_code == 403:
-                body = json.dumps({"error": "Forbidden", "message": "You do not have permission to access this resource"})
-            elif status_code == 404:
-                body = json.dumps({"error": "Not Found", "message": "The requested resource was not found"})
-            elif status_code == 409:
-                body = json.dumps({"error": "Conflict", "message": "Resource already exists or state conflict"})
-            elif status_code == 415:
-                body = json.dumps({"error": "Unsupported Media Type", "message": "Content-Type header is missing or invalid"})
-            elif status_code == 429:
-                body = json.dumps({"error": "Too Many Requests", "message": "Rate limit exceeded"})
-            elif 400 <= status_code < 500:
-                body = json.dumps({"error": "Bad Request", "message": expected})
-            elif status_code >= 500:
-                body = json.dumps({"error": "Internal Server Error", "message": "An unexpected error occurred on the server"})
-            else:
-                body = json.dumps({"status": "mock_response", "code": status_code})
-                
-            return {
-                'statusCode': status_code,
-                'body': body,
-                'expected': expected
-            }
-        except:
-            pass
 
-    # Fallback to legacy logic based on test type if extraction fails
+def _get_mock_body_for_status(status_code, method, original_payload, expected):
+    """Generate a mock response body for a given HTTP status code."""
+    # Check exact status code matches first
+    if status_code in _STATUS_ERROR_BODY:
+        return json.dumps(_STATUS_ERROR_BODY[status_code])
+    
+    if status_code == 204:
+        return ""
+    
+    if 200 <= status_code < 300:
+        if method in ['POST', 'PUT', 'PATCH']:
+            if original_payload and isinstance(original_payload, (dict, list)):
+                return json.dumps(original_payload)
+            return json.dumps({"message": "Resource processed successfully", "id": "mock_001", "status": "success"})
+        else:
+            if original_payload and isinstance(original_payload, (dict, list)):
+                return json.dumps(original_payload) if isinstance(original_payload, list) else json.dumps([original_payload])
+            return json.dumps({"status": "success", "data": []})
+    
+    if 400 <= status_code < 500:
+        return json.dumps({"error": "Bad Request", "message": expected})
+    
+    if status_code >= 500:
+        return json.dumps({"error": "Internal Server Error", "message": "An unexpected error occurred on the server"})
+    
+    return json.dumps({"status": "mock_response", "code": status_code})
+
+
+def _get_error_code_from_scenario(test_type, scenario):
+    """Determine error status code and message from test type and scenario keywords."""
+    for keywords, code, msg in _SCENARIO_ERROR_RULES:
+        if test_type == msg or any(k.lower() in scenario.lower() for k in keywords):
+            return code, msg
+    return 400, "Bad Request"
+
+
+def _get_fallback_response(test_type, method, scenario, original_payload, expected):
+    """Generate fallback mock response based on test type when status code extraction fails."""
     if test_type in ['Positive', 'Integration', 'Performance']:
         if method == 'POST':
             body = json.dumps(original_payload) if original_payload and isinstance(original_payload, (dict, list)) else json.dumps({"message": "Resource created successfully", "id": "mock_001"})
@@ -1090,38 +1019,77 @@ def generate_mock_response(test_case, method, original_payload=None, field_confi
             return {'statusCode': 200, 'body': body, 'expected': expected}
     
     elif test_type in ['Negative', 'Validation', 'Security', 'Header', 'Auth', 'RateLimit']:
-        status_code = 400
-        error_msg = "Bad Request"
-        
-        if test_type == 'Auth' or 'Authorization' in scenario or 'token' in scenario.lower():
-            status_code = 401
-            error_msg = "Unauthorized"
-        elif 'Forbidden' in scenario or 'Role' in scenario or 'Permission' in scenario:
-            status_code = 403
-            error_msg = "Forbidden"
-        elif 'Not Found' in scenario or 'non-existing' in scenario:
-            status_code = 404
-            error_msg = "Not Found"
-        elif 'Rate' in scenario or 'Limit' in scenario:
-            status_code = 429
-            error_msg = "Too Many Requests"
-        elif 'Content-Type' in scenario or 'Header' in test_type:
-            status_code = 415
-            error_msg = "Unsupported Media Type"
-            
+        status_code, error_msg = _get_error_code_from_scenario(test_type, scenario)
         return {
-            'statusCode': status_code, 
-            'body': json.dumps({"error": error_msg, "message": scenario}), 
+            'statusCode': status_code,
+            'body': json.dumps({"error": error_msg, "message": scenario}),
             'expected': expected
         }
-        
+    
     return {
-        'statusCode': 200, 
-        'body': json.dumps({"status": "mock_response", "scenario": scenario}), 
+        'statusCode': 200,
+        'body': json.dumps({"status": "mock_response", "scenario": scenario}),
         'expected': expected
     }
 
+
+def generate_mock_response(test_case, method, original_payload=None, field_configs=None):
+    """Generate a mock HTTP response for a test case based on its type, method, and expected outcome."""
+    expected = test_case.get('expected', 'Success response')
+    if expected == 'N/A' or not expected:
+        expected = test_case.get('expected_status', 'N/A')
+    
+    test_type = test_case.get('type', 'Positive')
+    scenario = test_case.get('scenario', '')
+    payload = test_case.get('input', {})
+    
+    # Run validation
+    validation_errors = _run_mock_validation(payload, method, test_type, field_configs, original_payload)
+    if validation_errors:
+        error_msg = "\n".join([f"• {err}" for err in validation_errors])
+        return {
+            'statusCode': 400,
+            'body': json.dumps({"error": "Bad Request", "message": "Please correct the following validation errors and try again.", "details": validation_errors}),
+            'expected': expected,
+            'validation_failed': True,
+            'validation_error': f"❌ Invalid data type\n\nPlease correct the following validation errors and try again.\n\n{error_msg}"
+        }
+    
+    # Try to use expected status code from the test case
+    expected_codes = extract_response_code(expected)
+    if expected_codes and "N/A" not in expected_codes:
+        try:
+            status_code = int(expected_codes[0])
+            body = _get_mock_body_for_status(status_code, method, original_payload, expected)
+            return {'statusCode': status_code, 'body': body, 'expected': expected}
+        except (ValueError, TypeError):
+            pass
+    
+    # Fallback to legacy logic based on test type
+    return _get_fallback_response(test_type, method, scenario, original_payload, expected)
+
 def execute_single_test(endpoint, method, test_case, environment='mock', base_url='mock', original_payload=None, field_configs=None):
+    """Execute a single test case against a real or mock API endpoint.
+
+    Handles validation, HTTP request dispatch, response comparison, and
+    schema validation for 5xx errors. Delegates to ``execute_mock_test``
+    when ``environment`` or ``base_url`` is ``'mock'``.
+
+    Args:
+        endpoint: API endpoint path (e.g., ``/api/users``).
+        method: HTTP method (GET, POST, PUT, PATCH, DELETE).
+        test_case: Dict with keys ``id``, ``type``, ``scenario``, ``input``,
+                   ``expected``, and optionally ``baseUrl``, ``method``,
+                   ``endpoint``, ``expected_status``.
+        environment: ``'mock'`` or ``'real'``.
+        base_url: Base URL for the API, or ``'mock'`` for mock mode.
+        original_payload: Reference payload for type validation.
+        field_configs: Expected field type/required configurations.
+
+    Returns:
+        Dict with keys ``testCaseId``, ``status``, ``statusCode``,
+        ``responseBody``, ``details``, ``source``, ``additionalInfo``.
+    """
     test_id = test_case.get('id', 'Unknown')
     expected = test_case.get('expected', 'N/A')
     
@@ -1350,6 +1318,25 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         }
 
 def execute_mock_test(test_id, method, test_case, expected, original_payload=None, field_configs=None, base_url='mock', current_endpoint=None):
+    """Execute a test case in mock mode without making real HTTP requests.
+
+    Generates a simulated response via ``generate_mock_response`` and compares
+    the resulting status code against expected codes.
+
+    Args:
+        test_id: Test case identifier string.
+        method: HTTP method string.
+        test_case: Test case dict (same shape as in ``execute_single_test``).
+        expected: Expected outcome string (e.g., ``"200 OK"``).
+        original_payload: Reference payload for type validation.
+        field_configs: Expected field type/required configurations.
+        base_url: Base URL for display purposes.
+        current_endpoint: Resolved endpoint path.
+
+    Returns:
+        Dict with keys ``testCaseId``, ``status``, ``statusCode``,
+        ``responseBody``, ``details``, ``source``, ``additionalInfo``.
+    """
     if current_endpoint is None:
         current_endpoint = test_case.get('endpoint', '')
         
@@ -1437,6 +1424,19 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     }
 
 def build_url(endpoint, base_url):
+    """Construct a full URL from an endpoint path and base URL.
+
+    Handles edge cases: endpoints that are already full URLs, query-string-only
+    endpoints, and missing/empty base URLs (falls back to ``localhost:5000``).
+
+    Args:
+        endpoint: API path (e.g., ``/api/users``), query string (``?key=val``),
+                  or full URL.
+        base_url: Base URL (e.g., ``https://api.example.com``).
+
+    Returns:
+        Full URL string.
+    """
     if not endpoint:
         endpoint = ""
     if not base_url:
@@ -1456,4 +1456,18 @@ def build_url(endpoint, base_url):
     return f'http://localhost:5000/{endpoint.lstrip("/")}'
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    import os
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    port = int(os.environ.get('FLASK_PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes')
+    print("=" * 60)
+    print("API Test Command Center - Flask Application")
+    print("=" * 60)
+    print(f"Host: {host}")
+    print(f"Port: {port}")
+    print(f"Debug mode: {debug}")
+    print("-" * 60)
+    print(f"Starting Flask server on http://{host}:{port}")
+    print("Press Ctrl+C to stop the server")
+    print("=" * 60)
+    app.run(debug=debug, host=host, port=port, use_reloader=debug)

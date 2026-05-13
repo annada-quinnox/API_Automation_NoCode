@@ -25,7 +25,7 @@ if errorlevel 1 (
 REM Start Flask application
 echo.
 echo Starting Flask server...
-python start_flask_no_debug.py
+python app.py
 
 if errorlevel 1 (
     echo Failed to start Flask application

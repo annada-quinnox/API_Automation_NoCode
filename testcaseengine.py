@@ -25,7 +25,7 @@ def cast_value(value, target_type):
         pass
     return value
 
-class generate_testcases:
+class GenerateTestcases:
     def __init__(self):
         self.test_cases = []
     
@@ -600,279 +600,7 @@ class generate_testcases:
     def _generate_put_testcases(self, endpoint, testcases, counter, payload=None, field_configs={}):
         if payload:
             return self._generate_payload_based_testcases(endpoint, testcases, counter, payload, field_configs, "PUT")
-        
-        tests = []
-        tests.append({
-            "id": "PUT_POS_01",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update pet with full valid payload",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [{"id": 1, "name": "tag1"}], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_02",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update pet name only",
-            "input": '{"id": 1, "name": "doggie_updated", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_03",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update pet status to pending",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "pending"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_04",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update pet status to sold",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "sold"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_05",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update category name",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "cats"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_06",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update category id",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 10, "name": "birds"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_07",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update tags list",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [{"id": 2, "name": "friendly"}, {"id": 3, "name": "active"}], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_08",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update photoUrls with multiple values",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo1.jpg", "https://example.com/photo2.jpg", "https://example.com/photo3.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_09",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update with long valid name",
-            "input": '{"id": 1, "name": "' + 'a'*255 + '", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_POS_10",
-            "type": "Positive",
-            "category": "Positive",
-            "scenario": "Update existing pet ID",
-            "input": '{"id": 999, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "200 OK"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_01",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Missing id",
-            "input": '{"name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_02",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "id is null",
-            "input": '{"id": null, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_03",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "id as string",
-            "input": '{"id": "abc", "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_04",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "id negative",
-            "input": '{"id": -1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_05",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Missing name",
-            "input": '{"id": 1, "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_06",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Empty name",
-            "input": '{"id": 1, "name": "", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_07",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Name as number",
-            "input": '{"id": 1, "name": 123, "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_08",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Missing photoUrls",
-            "input": '{"id": 1, "name": "doggie", "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_09",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Empty photoUrls array",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": [], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_10",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "photoUrls not array",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": "abc", "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_11",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Missing category.id",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_12",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "category.id as string",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": "one", "name": "dogs"}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_13",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Empty category.name",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": ""}, "tags": [], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_14",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "tags.id as string",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [{"id": "tag1", "name": "friendly"}], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_15",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Empty tags.name",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [{"id": 1, "name": ""}], "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_16",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "tags not array",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": "tag", "status": "available"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_17",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Invalid status value",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "active"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_18",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Uppercase status",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "AVAILABLE"}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_19",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Status is null",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": null}',
-            "expected": "400 Bad Request"
-        })
-        
-        tests.append({
-            "id": "PUT_NEG_20",
-            "type": "Negative",
-            "category": "Negative",
-            "scenario": "Malformed JSON",
-            "input": '{"id": 1, "name": "doggie", "photoUrls": ["https://example.com/photo.jpg"], "category": {"id": 1, "name": "dogs"}, "tags": [], "status": "available"',
-            "expected": "400 Bad Request"
-        })
-        
-        return tests
+        return [{"id": "PUT_01", "type": "Positive", "scenario": "Full resource update", "input": "Valid JSON", "expected": "200 OK"}]
     
     def _generate_patch_testcases(self, endpoint, testcases, counter, payload=None, field_configs={}):
         if payload:
@@ -2093,13 +1821,22 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
     return tests
 
 def flatten(data, parent_key="", sep="."):
+    """Flatten a nested dict/list structure into dot-notation keys.
+    
+    Handles nested dicts recursively and extracts the first element
+    from lists of dicts for schema analysis.
+    """
     items = {}
-    for k, v in data.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, dict):
-            items.update(flatten(v, new_key, sep=sep))
-        else:
-            items[new_key] = v
+    if isinstance(data, dict):
+        for k, v in data.items():
+            str_k = str(k)
+            new_key = parent_key + sep + str_k if parent_key else str_k
+            if isinstance(v, dict):
+                items.update(flatten(v, new_key, sep=sep))
+            elif isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
+                items.update(flatten(v[0], new_key, sep=sep))
+            else:
+                items[new_key] = v
     return items
 
 def remove_field(data, field_path):
@@ -2119,3 +1856,6 @@ def set_field(data, field_path, value):
         d = d.get(k, {})
     d[keys[-1]] = value
     return new_data
+
+# Backward-compatible alias for PEP 8 rename
+generate_testcases = GenerateTestcases

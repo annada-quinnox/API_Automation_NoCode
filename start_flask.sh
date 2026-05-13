@@ -24,7 +24,7 @@ fi
 # Start Flask application
 echo ""
 echo "Starting Flask server..."
-python3 start_flask_no_debug.py
+python3 app.py
 
 if [ $? -ne 0 ]; then
     echo "Failed to start Flask application"
