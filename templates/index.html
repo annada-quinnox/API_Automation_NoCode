@@ -66,7 +66,7 @@
             align-items: center;
             gap: 12px;
             padding: 12px 16px;
-            border-radius: 8px;
+            border-radius: 12px;
             color: var(--gray);
             text-decoration: none;
             transition: all 0.2s;
@@ -106,7 +106,7 @@
 
         .card {
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             padding: 24px;
             margin-bottom: 24px;
@@ -134,11 +134,17 @@
         .summary-card {
             background: white;
             padding: 24px;
-            border-radius: 12px;
+            border-radius: 16px;
             border: 1px solid var(--border);
             display: flex;
             align-items: center;
             gap: 16px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.05);
         }
 
         .summary-icon {
@@ -185,37 +191,194 @@
             color: #374151;
             margin-bottom: 8px;
             display: block;
+            padding-left: 4px;
         }
 
-        input, select, textarea {
+        input, textarea {
             border: 1px solid var(--border);
-            padding: 10px 14px;
-            border-radius: 8px;
+            padding: 12px 18px; 
+            border-radius: 24px; 
             font-size: 0.95rem;
             width: 100%;
-            transition: border-color 0.2s;
+            transition: all 0.3s ease;
+            background-color: white;
+            color: var(--dark);
+        }
+        
+        textarea {
+            border-radius: 16px; 
+            resize: vertical;
         }
 
-        input:focus, select:focus, textarea:focus {
+        input:hover, textarea:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 4px 10px rgba(79, 70, 229, 0.05);
+        }
+
+        input:focus, textarea:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
         }
 
+        /* --- CUSTOM ELEGANT HOVER DROPDOWN STYLES --- */
+        .custom-select {
+            position: relative;
+            width: 100%;
+        }
+
+        .custom-select select {
+            display: none; /* Hide the native browser select */
+        }
+
+        /* The Main Dropdown Trigger Button */
+        /* The Main Dropdown Trigger Button */
+        .select-selected {
+            background-color: white;
+            border: 1px solid var(--border);
+            padding: 12px 40px 12px 18px; /* Increased right padding for the arrow */
+            border-radius: 24px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            user-select: none;
+            position: relative; /* Changed to relative for absolute arrow */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--dark);
+            white-space: nowrap; /* Forces text to a single line */
+            overflow: hidden; /* Hides overflow */
+            text-overflow: ellipsis; /* Adds the "..." */
+        }
+
+        /* The Custom Arrow */
+        /* The Custom Arrow */
+        .select-selected::after {
+            content: "";
+            position: absolute; /* Changed to absolute to sit on the right */
+            right: 18px;
+            top: 50%;
+            width: 8px;
+            height: 8px;
+            border-right: 2px solid var(--gray);
+            border-bottom: 2px solid var(--gray);
+            transform: translateY(-75%) rotate(45deg);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        /* The Dropdown Options List */
+        .select-items {
+            position: absolute;
+            background-color: white;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            border: 1px solid var(--primary-light);
+            border-top: none; /* Allows the seamless merge */
+            border-radius: 0 0 24px 24px; /* Matches circled corners on bottom */
+            box-shadow: 0 12px 20px rgba(79, 70, 229, 0.1);
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(0);
+            transition: all 0.2s ease;
+        }
+
+        /* HOVER EFFECT: The Seamless Merge */
+        .custom-select:hover .select-selected {
+            border-radius: 24px 24px 0 0; /* Flatten the bottom */
+            border-color: var(--primary-light);
+            border-bottom-color: transparent; /* Remove the dividing line */
+            box-shadow: 0 -4px 10px rgba(79, 70, 229, 0.05);
+            background-color: white;
+            z-index: 101; /* Stay above the list */
+            position: relative;
+        }
+
+        .custom-select:hover .select-selected::after {
+            transform: translateY(-25%) rotate(-135deg); /* Flip the arrow */
+            border-color: var(--primary);
+        }
+
+        .custom-select:hover .select-items {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Styling individual options */
+        /* Styling individual options */
+        .select-items div {
+            color: var(--dark);
+            padding: 12px 18px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            border-top: 1px solid transparent;
+            white-space: nowrap; /* Forces list items to single line */
+            overflow: hidden; /* Hides overflow */
+            text-overflow: ellipsis; /* Adds the "..." */
+        }
+
+        .select-items div:first-child {
+            border-top: 1px solid var(--border); /* A faint separator just below the main label */
+        }
+
+        .select-items div:hover {
+            background-color: #eef2ff;
+            color: var(--primary);
+            padding-left: 24px; /* Elegant indent on hover */
+        }
+
+        /* Temporary class to force-close the dropdown after clicking */
+        .custom-select.force-close .select-items {
+            opacity: 0 !important;
+            visibility: hidden !important;
+        }
+        .custom-select.force-close .select-selected {
+            border-radius: 24px !important;
+            border-color: var(--border) !important;
+            border-bottom-color: var(--border) !important;
+        }
+        .custom-select.force-close .select-selected::after {
+            transform: translateY(-25%) rotate(45deg) !important;
+            border-color: var(--gray) !important;
+        }
+
+        /* Custom Selects inside the dynamic Field Table */
+        .field-table .select-selected {
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 0.8rem;
+        }
+        .field-table .custom-select:hover .select-selected {
+            border-radius: 16px 16px 0 0;
+        }
+        .field-table .select-items {
+            border-radius: 0 0 16px 16px;
+        }
+        .field-table .select-items div {
+            padding: 8px 12px;
+            font-size: 0.8rem;
+        }
+        /* --- END CUSTOM SELECT STYLES --- */
+
+
+        /* Upload Panels with Hover Effects */
         .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
             padding: 32px;
             text-align: center;
-            background: #f9fafb;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             margin-bottom: 24px;
         }
 
         .upload-zone:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
             border-color: var(--primary);
-            background: #f3f4f6;
         }
 
         /* Buttons & Badges */
@@ -224,18 +387,38 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-            padding: 10px 20px;
-            border-radius: 8px;
+            padding: 12px 24px;
+            border-radius: 24px; 
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
             border: none;
             font-size: 0.95rem;
         }
 
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-success { background: var(--success); color: white; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { 
+            background: var(--primary); 
+            color: white; 
+            box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2);
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(79, 70, 229, 0.3);
+        }
+        
+        .btn-success { 
+            background: var(--success); 
+            color: white; 
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+        }
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
         .badge {
             padding: 4px 10px;
@@ -251,7 +434,7 @@
             font-size: 0.7rem;
             font-weight: 700;
             padding: 2px 8px;
-            border-radius: 4px;
+            border-radius: 9999px;
             text-transform: uppercase;
         }
         .status-pass { background: #d1fae5; color: #065f46; }
@@ -262,7 +445,7 @@
         .output-container {
             background: #1e293b;
             color: #e2e8f0;
-            border-radius: 8px;
+            border-radius: 16px;
             padding: 20px;
             font-family: monospace;
             font-size: 0.875rem;
@@ -273,14 +456,19 @@
         .test-case-card {
             background: white;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 12px 16px;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             gap: 12px;
+            transition: all 0.2s ease;
         }
-/* added checkbox style for test case List*/
+        
+        .test-case-card:hover {
+            border-color: var(--primary-light);
+            background: #f8fafc;
+        }
 
         .field-table {
             width: 100%;
@@ -301,15 +489,6 @@
             font-weight: 600;
         }
 
-        .type-tag {
-            background: #e0e7ff;
-            color: #3730a3;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-family: monospace;
-        }
-
         /* Fixed-width checkbox column */
         .checkbox-col {
             width: 40px;
@@ -317,10 +496,43 @@
             justify-content: center;
         }
         
+        /* Modern Checkbox */
+        input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+            cursor: pointer;
+            position: relative;
+            background: white;
+            transition: all 0.2s ease;
+            padding: 0;
+        }
+        
+        input[type="checkbox"]:checked {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        
+        input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 1px;
+            width: 6px;
+            height: 12px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+        
         /* Test case info column */
         .testcase-info {
             flex: 1;
-            min-width: 0; /* Allows text truncation */
+            min-width: 0;
         }
         
         .tc-id {
@@ -355,30 +567,11 @@
             white-space: nowrap;
         }
         
-        .category-positive {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .category-negative {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .category-edge {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .category-security {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-        
-        .category-performance {
-            background: #f3e8ff;
-            color: #6b21a8;
-        }
+        .category-positive { background: #d1fae5; color: #065f46; }
+        .category-negative { background: #fee2e2; color: #991b1b; }
+        .category-edge { background: #fef3c7; color: #92400e; }
+        .category-security { background: #dbeafe; color: #1e40af; }
+        .category-performance { background: #f3e8ff; color: #6b21a8; }
         
         /* Expected status column */
         .expected-col {
@@ -389,7 +582,7 @@
         
         .expected-badge {
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: 8px;
             font-size: 0.7rem;
             font-weight: 600;
             background: #e0e7ff;
@@ -407,7 +600,7 @@
         
         .execution-badge {
             padding: 4px 10px;
-            border-radius: 4px;
+            border-radius: 9999px;
             font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
@@ -415,124 +608,23 @@
             white-space: nowrap;
         }
         
-        .status-not-executed {
-            background: #f3f4f6;
-            color: #4b5563;
-        }
-        
-        .status-passed {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .status-failed {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        /* Main test case text */
-        .testcase-info {
-            flex: 1;
-        }
-
-        .tc-id {
-            font-size: 0.75rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-        .tc-scenario {
-            font-size: 0.95rem;
-            font-weight: 500;
-        }
-
-        /* Badges alignment */
-        .badge,
-        .status-badge {
-            white-space: nowrap;
-        }
-
-        /* Category badge styles */
-        .category-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        
-        .category-positive {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .category-negative {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .category-edge {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .category-security {
-            background: #e0e7ff;
-            color: #3730a3;
-        }
-        
-        .category-performance {
-            background: #fce7f3;
-            color: #9d174d;
-        }
-        
-        /* Execution status badge styles */
-        .execution-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        
-        .status-not-executed {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
-        
-        .status-passed {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .status-failed {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .status-error {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        /* Column widths for test case display */
-        .category-col {
-            width: 100px;
-            text-align: center;
-        }
-        
-        .status-col {
-            width: 120px;
-            text-align: center;
-        }
-
-/* custom code by User Annada Ends Here */
+        .status-not-executed { background: #f3f4f6; color: #4b5563; }
+        .status-passed { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+        .status-error { background: #fef3c7; color: #92400e; }
 
         .result-item {
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 15px;
             margin-bottom: 15px;
             background: var(--light);
+            transition: transform 0.2s;
+        }
+        
+        .result-item:hover {
+            transform: scale(1.01);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
 
         .result-header {
@@ -546,7 +638,7 @@
             background: #1e293b;
             color: #e2e8f0;
             padding: 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-family: monospace;
             font-size: 0.85em;
             margin-top: 10px;
@@ -557,10 +649,11 @@
 
         .alert {
             padding: 12px 16px;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 20px;
             display: none;
             font-size: 0.9rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .alert.show { display: block; }
         .alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid var(--danger); }
@@ -578,15 +671,22 @@
             align-items: center;
             justify-content: center;
             z-index: 1000;
+            backdrop-filter: blur(4px);
         }
 
         .modal-content {
             background: white;
-            border-radius: 12px;
+            border-radius: 20px;
             width: 90%;
             max-width: 500px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
             overflow: hidden;
+            transform: scale(0.95);
+            animation: modalIn 0.2s forwards ease-out;
+        }
+        
+        @keyframes modalIn {
+            to { transform: scale(1); }
         }
 
         .modal-header {
@@ -612,16 +712,18 @@
             color: var(--gray);
             cursor: pointer;
             padding: 0;
-            width: 30px;
-            height: 30px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: 50%;
+            transition: background 0.2s;
         }
 
         .modal-close:hover {
             background: #f3f4f6;
+            color: var(--danger);
         }
 
         .modal-body {
@@ -641,7 +743,7 @@
             width: 100%;
             padding: 16px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 16px;
             background: white;
             cursor: pointer;
             transition: all 0.2s;
@@ -651,6 +753,7 @@
         .modal-btn:hover {
             border-color: var(--primary);
             background: #f9fafb;
+            transform: translateX(4px);
         }
 
         .modal-btn-primary {
@@ -687,298 +790,436 @@
             <span>API TestProbe</span>
         </div>
         <nav>
-            <a href="#" class="nav-item active">
+            <a href="javascript:void(0)" class="nav-item active" onclick="switchView('dashboard-view', this)">
                 <i data-lucide="layout-dashboard"></i> Dashboard
             </a>
-            <a href="#" class="nav-item">
+            <a href="javascript:void(0)" class="nav-item" onclick="switchView('templates-view', this)">
                 <i data-lucide="file-spreadsheet"></i> Excel Templates
             </a>
-            <a href="#" class="nav-item">
+            <a href="javascript:void(0)" class="nav-item" onclick="switchView('history-view', this)">
                 <i data-lucide="history"></i> Run History
             </a>
-            <a href="#" class="nav-item">
+            <a href="javascript:void(0)" class="nav-item" onclick="switchView('settings-view', this)">
                 <i data-lucide="settings"></i> Settings
             </a>
         </nav>
-        <div style="margin-top: auto; padding: 20px; background: #f3f4f6; border-radius: 12px;">
+        <div style="margin-top: auto; padding: 20px; background: #f3f4f6; border-radius: 16px;">
             <div style="font-size: 0.75rem; color: var(--gray); margin-bottom: 4px;">V1.0.0 Stable Version</div>
             <div style="font-weight: 600; font-size: 0.875rem;">Enterprise Edition</div>
         </div>
     </div>
 
     <div class="main-content">
-        <div class="dashboard-header">
-            <div>
-                <h1>API Test Command Center</h1>
-                <p style="color: var(--gray);">Generate, Configure and execute API test scenarios</p>
-            </div>
-            <div style="display: flex; gap: 12px;">
-                <button class="btn" style="background: white; border: 1px solid var(--border); color: var(--dark);">
-                    <i data-lucide="help-circle"></i> Docs
-                </button>
-                <button class="btn btn-primary" onclick="window.location.reload()">
-                    <i data-lucide="refresh-cw"></i> Reset
-                </button>
-            </div>
-        </div>
-
-        <div class="summary-grid">
-            <div class="summary-card">
-                <div class="summary-icon bg-blue"><i data-lucide="zap"></i></div>
-                <div class="summary-info"><h3>Generated</h3><p id="dash-generated">0</p></div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-icon bg-green"><i data-lucide="check-circle"></i></div>
-                <div class="summary-info"><h3>Success Rate</h3><p id="dash-success">0%</p></div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-icon bg-red"><i data-lucide="alert-triangle"></i></div>
-                <div class="summary-info"><h3>Failures</h3><p id="dash-failures">0</p></div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-icon bg-purple"><i data-lucide="clock"></i></div>
-                <div class="summary-info"><h3>Avg Latency</h3><p id="dash-latency">-- ms</p></div>
-            </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;" id="config-grid">
-            <div class="card">
-                <div class="card-title"><i data-lucide="sliders"></i> Configuration</div>
-                <div class="alert alert-error" id="error"></div>
-                <div class="alert alert-success" id="success"></div>
-
-                <!-- Export Options Modal -->
-                <div id="exportModal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3><i data-lucide="download" style="width: 20px; height: 20px; margin-right: 8px;"></i> Export Test Cases</h3>
-                            <button class="modal-close" onclick="hideExportOptions()">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <p style="margin-bottom: 20px; color: var(--gray);">Choose how you want to export the generated test cases:</p>
-                            <div style="display: flex; flex-direction: column; gap: 12px;">
-                                <button class="modal-btn modal-btn-primary" onclick="saveToLocal()">
-                                    <i data-lucide="file-spreadsheet" style="width: 20px; height: 20px; margin-right: 10px;"></i>
-                                    <div style="text-align: left;">
-                                        <strong>Save to Local (Excel)</strong>
-                                        <p style="font-size: 0.875rem; color: var(--gray); margin-top: 2px;">Download as Excel file to your computer</p>
-                                    </div>
-                                </button>
-                                <button class="modal-btn modal-btn-secondary" onclick="saveToDatabase()">
-                                    <i data-lucide="database" style="width: 20px; height: 20px; margin-right: 10px;"></i>
-                                    <div style="text-align: left;">
-                                        <strong>Save to Database</strong>
-                                        <p style="font-size: 0.875rem; color: var(--gray); margin-top: 2px;">Store test cases in SQL Server database</p>
-                                    </div>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button class="btn" onclick="hideExportOptions()" style="border: 1px solid var(--border);">Cancel</button>
-                        </div>
-                    </div>
+        
+        <div id="dashboard-view" class="view-section">
+            <div class="dashboard-header">
+                <div>
+                    <h1>API Test Command Center</h1>
+                    <p style="color: var(--gray);">Generate, Configure and execute API test scenarios</p>
                 </div>
-
-                <div class="upload-zone" onclick="document.getElementById('excelFile').click()">
-                    <i data-lucide="upload-cloud" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 12px;"></i>
-                    <h4>Import External Excel</h4>
-                    <p style="font-size: 0.875rem; color: var(--gray);">Drag and drop or click to browse</p>
-                    <input type="file" id="excelFile" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(this)">
-                </div>
-
-                <div class="upload-zone" onclick="showDatabaseSessions()" style="margin-top: 16px; background: #f5f3ff; border-color: #8b5cf6;">
-                    <i data-lucide="database" style="width: 48px; height: 48px; color: #8b5cf6; margin-bottom: 12px;"></i>
-                    <h4>Load from Database</h4>
-                    <p style="font-size: 0.875rem; color: var(--gray);">Load previously saved test cases from database</p>
-                </div>
-
-                <!-- Database Sessions Modal -->
-                <div id="databaseModal" class="modal" style="display: none;">
-                    <div class="modal-content" style="max-width: 800px;">
-                        <div class="modal-header">
-                            <h3><i data-lucide="database" style="width: 20px; height: 20px; margin-right: 8px;"></i> Load Test Cases from Database</h3>
-                            <button class="modal-close" onclick="hideDatabaseModal()">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <div style="margin-bottom: 20px;">
-                                <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-                                    <div class="form-group">
-                                        <label>Base URL Filter</label>
-                                        <input type="text" id="dbBaseUrlFilter" placeholder="Filter by base URL">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Endpoint Filter</label>
-                                        <input type="text" id="dbEndpointFilter" placeholder="Filter by endpoint">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Method Filter</label>
-                                        <select id="dbMethodFilter">
-                                            <option value="">All Methods</option>
-                                            <option value="GET">GET</option>
-                                            <option value="POST">POST</option>
-                                            <option value="PUT">PUT</option>
-                                            <option value="PATCH">PATCH</option>
-                                            <option value="DELETE">DELETE</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div style="display: flex; gap: 12px; margin-top: 12px;">
-                                    <button class="btn btn-primary" onclick="loadDatabaseSessions()" style="flex: 1;">
-                                        <i data-lucide="search"></i> Search Sessions
-                                    </button>
-                                    <button class="btn" onclick="clearDatabaseFilters()" style="border: 1px solid var(--border);">
-                                        <i data-lucide="filter-x"></i> Clear Filters
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div id="databaseSessionsLoading" style="display: none; text-align: center; padding: 20px;">
-                                <div class="loading-spinner" style="margin: 0 auto; border-color: var(--primary); border-top-color: var(--primary);"></div>
-                                <p style="margin-top: 12px; color: var(--gray);">Loading sessions...</p>
-                            </div>
-
-                            <div id="databaseSessionsList" style="max-height: 400px; overflow-y: auto;">
-                                <p style="text-align: center; color: var(--gray); padding: 40px 0;">
-                                    <i data-lucide="database" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3;"></i><br>
-                                    Use filters to search for saved test case sessions
-                                </p>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button class="btn" onclick="hideDatabaseModal()" style="border: 1px solid var(--border);">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-
-                <form id="apiForm">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Environment</label>
-                            <select id="environment">
-                                <option value="mock">🔧 Mock Execution</option>
-                                <option value="custom">🌐 Custom URL</option>
-                                <option value="dev">💻 Development</option>
-                                <option value="staging">🧪 Staging</option>
-                                <option value="production">🚀 Production</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Method</label>
-                            <select id="method" required>
-                                <option value="">Select Method</option>
-                                <option value="All">All Methods</option>
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="PATCH">PATCH</option>
-                                <option value="DELETE">DELETE</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="customUrlGroup">
-                        <label>Base URL</label>
-                        <input type="text" id="customUrl" placeholder="https://api.example.com">
-                    </div>
-                    <div class="form-group">
-                        <label>API Endpoint</label>
-                        <input type="text" id="endpoint" placeholder="/api/users" required>
-                    </div>
-                    <div id="query-params-section" style="display: none;">
-                        <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-                            <div class="form-group">
-                                <label>Parameter Type</label>
-                                <select id="param-type">
-                                    <option value="query">Query Parameter</option>
-                                    <option value="path">Path Parameter</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="field-name-group">
-                                <label>Field Name</label>
-                                <input type="text" id="field-name" placeholder="e.g. status">
-                            </div>
-                            <div class="form-group">
-                                <label>Search Values</label>
-                                <input type="text" id="search-txt" placeholder="e.g. available,pending">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group" id="payload-section">
-                        <label>Payload (JSON)</label>
-                        <textarea id="payload" style="height: 100px; font-family: monospace;" placeholder='{"id": 1, "name": "test"}'></textarea>
-                        <div id="payloadValidation" style="margin-top: 8px; font-size: 0.8rem; display: none; padding: 8px; border-radius: 4px;"></div>
-                        <div id="fieldAnalysisContainer" style="display: none; margin-top: 15px;">
-                            <label style="font-size: 0.8rem; color: var(--gray);">Field Analysis</label>
-                            <table class="field-table" id="fieldTable">
-                                <thead>
-                                    <tr>
-                                        <th>Field</th>
-                                        <th>Data Type</th>
-                                        <th>Required</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="fieldTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: 12px;">
-                        <button type="submit" class="btn btn-primary" style="flex: 2;">
-                            <i data-lucide="play-circle"></i> Generate Scenarios
-                        </button>
-                        <button type="button" class="btn" style="border: 1px solid var(--border); background: white;" onclick="showExportOptions()">
-                            <i data-lucide="download"></i> Export
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="card">
-                <div class="card-title"><i data-lucide="terminal"></i> Generated TestCase Output</div>
-                <div id="empty-output" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; color: var(--gray);">
-                    <i data-lucide="inbox" style="width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.3;"></i>
-                    <p>Configure and generate to see JSON output</p>
-                </div>
-                <div id="outputSection" style="display: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <span class="badge badge-info"><span id="resultCount">0</span> Scenarios</span>
-                        <button class="btn" style="padding: 4px 12px; font-size: 0.8rem; border: 1px solid var(--border);" onclick="copyToClipboard()">
-                            <i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy JSON
-                        </button>
-                    </div>
-                    <pre class="output-container" id="output"></pre>
-                </div>
-            </div>
-        </div>
-
-        <div id="testCasesWrapper" style="display: none; margin-top: 30px;">
-            <div class="card">
-                <div class="card-title" style="justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 8px;"><i data-lucide="list-checks"></i> Test Scenarios</div>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <label style="margin-bottom: 0; font-size: 0.875rem; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                            <input type="checkbox" id="selectAllCheckbox" style="width: 16px; height: 16px;"> Select All</label>
-                        <button class="btn btn-success" id="executeBtn" onclick="executeSelectedTests()">
-                            <i data-lucide="activity"></i> Execute Run
-                        </button>
-                    </div>
-                </div>
-                <div id="testCasesList"></div>
-            </div>
-            <div class="card">
-                <div class="card-title" style="justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 8px;"><i data-lucide="bar-chart-3"></i> Execution Logs</div>
-                    <button class="btn btn-primary" id="exportResultsBtn" onclick="exportResultsExcel()" style="padding: 6px 12px; font-size: 0.85rem; display: none;">
-                        <i data-lucide="download"></i> Export Results
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn" style="background: white; border: 1px solid var(--border); color: var(--dark);">
+                        <i data-lucide="help-circle"></i> Docs
+                    </button>
+                    <button class="btn btn-primary" onclick="window.location.reload()">
+                        <i data-lucide="refresh-cw"></i> Reset
                     </button>
                 </div>
-                <div id="resultsList" style="text-align: center; color: var(--gray); padding: 40px 0;">
-                    <i data-lucide="clock" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3;"></i>
-                    <p>Select scenarios and execute to see results</p>
+            </div>
+
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-icon bg-blue"><i data-lucide="zap"></i></div>
+                    <div class="summary-info"><h3>Generated</h3><p id="dash-generated">0</p></div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon bg-green"><i data-lucide="check-circle"></i></div>
+                    <div class="summary-info"><h3>Success Rate</h3><p id="dash-success">0%</p></div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon bg-red"><i data-lucide="alert-triangle"></i></div>
+                    <div class="summary-info"><h3>Failures</h3><p id="dash-failures">0</p></div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon bg-purple"><i data-lucide="clock"></i></div>
+                    <div class="summary-info"><h3>Avg Latency</h3><p id="dash-latency">-- ms</p></div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;" id="config-grid">
+                <div class="card">
+                    <div class="card-title"><i data-lucide="sliders"></i> Configuration</div>
+                    <div class="alert alert-error" id="error"></div>
+                    <div class="alert alert-success" id="success"></div>
+
+                    <div id="exportModal" class="modal" style="display: none;">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3><i data-lucide="download" style="width: 20px; height: 20px; margin-right: 8px;"></i> Export Test Cases</h3>
+                                <button class="modal-close" onclick="hideExportOptions()">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <p style="margin-bottom: 20px; color: var(--gray);">Choose how you want to export the generated test cases:</p>
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    <button class="modal-btn modal-btn-primary" onclick="saveToLocal()">
+                                        <i data-lucide="file-spreadsheet" style="width: 20px; height: 20px; margin-right: 10px;"></i>
+                                        <div style="text-align: left;">
+                                            <strong>Save to Local (Excel)</strong>
+                                            <p style="font-size: 0.875rem; color: var(--gray); margin-top: 2px;">Download as Excel file to your computer</p>
+                                        </div>
+                                    </button>
+                                    <button class="modal-btn modal-btn-secondary" onclick="saveToDatabase()">
+                                        <i data-lucide="database" style="width: 20px; height: 20px; margin-right: 10px;"></i>
+                                        <div style="text-align: left;">
+                                            <strong>Save to Database</strong>
+                                            <p style="font-size: 0.875rem; color: var(--gray); margin-top: 2px;">Store test cases in SQL Server database</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn" onclick="hideExportOptions()" style="border: 1px solid var(--border); background: white; color: var(--dark);">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="upload-zone" onclick="document.getElementById('excelFile').click()">
+                        <i data-lucide="upload-cloud" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 12px;"></i>
+                        <h4>Import External Excel</h4>
+                        <p style="font-size: 0.875rem; color: var(--gray);">Drag and drop or click to browse</p>
+                        <input type="file" id="excelFile" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(this)">
+                    </div>
+
+                    <div class="upload-zone" onclick="showDatabaseSessions()" style="margin-top: 16px; background: #faf5ff; border-color: #e9d5ff;">
+                        <i data-lucide="database" style="width: 48px; height: 48px; color: #8b5cf6; margin-bottom: 12px;"></i>
+                        <h4>Load from Database</h4>
+                        <p style="font-size: 0.875rem; color: var(--gray);">Load previously saved test cases from database</p>
+                    </div>
+
+                    <div id="databaseModal" class="modal" style="display: none;">
+                        <div class="modal-content" style="max-width: 800px;">
+                            <div class="modal-header">
+                                <h3><i data-lucide="database" style="width: 20px; height: 20px; margin-right: 8px;"></i> Load Test Cases from Database</h3>
+                                <button class="modal-close" onclick="hideDatabaseModal()">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div style="margin-bottom: 20px;">
+                                    <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                                        <div class="form-group">
+                                            <label>Base URL Filter</label>
+                                            <input type="text" id="dbBaseUrlFilter" placeholder="Filter by base URL">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Endpoint Filter</label>
+                                            <input type="text" id="dbEndpointFilter" placeholder="Filter by endpoint">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Method Filter</label>
+                                            <select id="dbMethodFilter">
+                                                <option value="">All Methods</option>
+                                                <option value="GET">GET</option>
+                                                <option value="POST">POST</option>
+                                                <option value="PUT">PUT</option>
+                                                <option value="PATCH">PATCH</option>
+                                                <option value="DELETE">DELETE</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                                        <button class="btn btn-primary" onclick="loadDatabaseSessions()" style="flex: 1;">
+                                            <i data-lucide="search"></i> Search Sessions
+                                        </button>
+                                        <button class="btn" onclick="clearDatabaseFilters()" style="border: 1px solid var(--border); background: white; color: var(--dark);">
+                                            <i data-lucide="filter-x"></i> Clear Filters
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="databaseSessionsLoading" style="display: none; text-align: center; padding: 20px;">
+                                    <div class="loading-spinner" style="margin: 0 auto; border-color: var(--primary); border-top-color: var(--primary);"></div>
+                                    <p style="margin-top: 12px; color: var(--gray);">Loading sessions...</p>
+                                </div>
+
+                                <div id="databaseSessionsList" style="max-height: 400px; overflow-y: auto;">
+                                    <p style="text-align: center; color: var(--gray); padding: 40px 0;">
+                                        <i data-lucide="database" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3;"></i><br>
+                                        Use filters to search for saved test case sessions
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn" onclick="hideDatabaseModal()" style="border: 1px solid var(--border); background: white; color: var(--dark);">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form id="apiForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Environment</label>
+                                <select id="environment">
+                                    <option value="mock">🔧 Mock Execution</option>
+                                    <option value="custom">🌐 Custom URL</option>
+                                    <option value="dev">💻 Development</option>
+                                    <option value="staging">🧪 Staging</option>
+                                    <option value="production">🚀 Production</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Method</label>
+                                <select id="method" required>
+                                    <option value="" disabled selected>Select Method</option>
+                                    <option value="All">All Methods</option>
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="PATCH">PATCH</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="customUrlGroup" style="display: block;">
+                            <label>Base URL</label>
+                            <input type="text" id="customUrl" placeholder="https://api.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label>API Endpoint</label>
+                            <input type="text" id="endpoint" placeholder="/api/users" required>
+                        </div>
+                        <div id="query-params-section" style="display: none;">
+                            <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                                <div class="form-group">
+                                    <label>Parameter Type</label>
+                                    <select id="param-type">
+                                        <option value="query">Query Parameter</option>
+                                        <option value="path">Path Parameter</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="field-name-group">
+                                    <label>Field Name</label>
+                                    <input type="text" id="field-name" placeholder="e.g. status">
+                                </div>
+                                <div class="form-group">
+                                    <label>Search Values</label>
+                                    <input type="text" id="search-txt" placeholder="e.g. available,pending">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group" id="payload-section">
+                            <label>Payload (JSON)</label>
+                            <textarea id="payload" style="height: 120px; font-family: monospace;" placeholder='{"id": 1, "name": "test"}'></textarea>
+                            <div id="payloadValidation" style="margin-top: 8px; font-size: 0.8rem; display: none; padding: 8px 12px; border-radius: 8px;"></div>
+                            <div id="fieldAnalysisContainer" style="display: none; margin-top: 15px;">
+                                <label style="font-size: 0.8rem; color: var(--gray);">Field Analysis</label>
+                                <table class="field-table" id="fieldTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Field</th>
+                                            <th>Data Type</th>
+                                            <th>Required</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fieldTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px; margin-top: 24px;">
+                            <button type="submit" class="btn btn-primary" style="flex: 2;">
+                                <i data-lucide="play-circle"></i> Generate Scenarios
+                            </button>
+                            <button type="button" class="btn" style="border: 1px solid var(--border); background: white; color: var(--dark);" onclick="showExportOptions()">
+                                <i data-lucide="download"></i> Export
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><i data-lucide="terminal"></i> Generated TestCase Output</div>
+                    <div id="empty-output" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; color: var(--gray);">
+                        <i data-lucide="inbox" style="width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.3;"></i>
+                        <p>Configure and generate to see JSON output</p>
+                    </div>
+                    <div id="outputSection" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <span class="badge badge-info" style="padding: 6px 12px;"><span id="resultCount">0</span> Scenarios</span>
+                            <button class="btn" style="padding: 6px 16px; font-size: 0.8rem; border: 1px solid var(--border); background: white; color: var(--dark);" onclick="copyToClipboard()">
+                                <i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy JSON
+                            </button>
+                        </div>
+                        <pre class="output-container" id="output"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div id="testCasesWrapper" style="display: none; margin-top: 30px;">
+                <div class="card">
+                    <div class="card-title" style="justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;"><i data-lucide="list-checks"></i> Test Scenarios</div>
+                        <div style="display: flex; gap: 16px; align-items: center;">
+                            <label style="margin-bottom: 0; font-size: 0.875rem; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="selectAllCheckbox"> Select All</label>
+                            <button class="btn btn-success" id="executeBtn" onclick="executeSelectedTests()">
+                                <i data-lucide="activity"></i> Execute Run
+                            </button>
+                        </div>
+                    </div>
+                    <div id="testCasesList"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title" style="justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;"><i data-lucide="bar-chart-3"></i> Execution Logs</div>
+                        <button class="btn btn-primary" id="exportResultsBtn" onclick="exportResultsExcel()" style="padding: 8px 16px; font-size: 0.85rem; display: none;">
+                            <i data-lucide="download"></i> Export Results
+                        </button>
+                    </div>
+                    <div id="resultsList" style="text-align: center; color: var(--gray); padding: 40px 0;">
+                        <i data-lucide="clock" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3;"></i>
+                        <p>Select scenarios and execute to see results</p>
+                    </div>
+                </div>
+            </div>
+        </div> <div id="templates-view" class="view-section" style="display: none;">
+            <div class="dashboard-header">
+                <div>
+                    <h1>Excel Templates</h1>
+                    <p style="color: var(--gray);">Download standardized templates for bulk API testing</p>
+                </div>
+            </div>
+            <div class="card">
+                <div style="text-align: center; padding: 40px;">
+                    <i data-lucide="file-spreadsheet" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 16px;"></i>
+                    <h3>Bulk Upload Templates</h3>
+                    <p style="color: var(--gray); margin-top: 8px;">Template download links and instructions will be placed here.</p>
                 </div>
             </div>
         </div>
+
+        <div id="history-view" class="view-section" style="display: none;">
+            <div class="dashboard-header">
+                <div>
+                    <h1>Run History</h1>
+                    <p style="color: var(--gray);">View past executions and database sessions</p>
+                </div>
+            </div>
+            <div class="card">
+                <div style="text-align: center; padding: 40px;">
+                    <i data-lucide="history" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 16px;"></i>
+                    <h3>Past Test Runs</h3>
+                    <p style="color: var(--gray); margin-top: 8px;">Your execution logs and historical data will appear here.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-view" class="view-section" style="display: none;">
+            <div class="dashboard-header">
+                <div>
+                    <h1>Settings</h1>
+                    <p style="color: var(--gray);">Configure Application Preferences</p>
+                </div>
+            </div>
+            <div class="card">
+                <div style="text-align: center; padding: 40px;">
+                    <i data-lucide="settings" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 16px;"></i>
+                    <h3>Global Settings</h3>
+                    <p style="color: var(--gray); margin-top: 8px;">Auth tokens, DB connections, and user preferences will be managed here.</p>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
+        // --- CUSTOM SELECT LOGIC (Hover / Click handling) ---
+        function initializeCustomSelect(selectElement) {
+            // Prevent double initialization
+            if (selectElement.nextElementSibling && selectElement.nextElementSibling.classList.contains('select-selected')) {
+                return;
+            }
+
+            // Create wrapper
+            const wrapper = document.createElement("DIV");
+            wrapper.setAttribute("class", "custom-select");
+            selectElement.parentNode.insertBefore(wrapper, selectElement);
+            wrapper.appendChild(selectElement);
+
+            // Create Trigger Button
+            const selectedDiv = document.createElement("DIV");
+            selectedDiv.setAttribute("class", "select-selected");
+            // Set initial text (handling disabled options)
+            selectedDiv.innerHTML = selectElement.options[selectElement.selectedIndex].innerHTML;
+            if (selectElement.options[selectElement.selectedIndex].disabled) {
+                selectedDiv.style.color = "var(--gray)";
+            }
+            wrapper.appendChild(selectedDiv);
+
+            // Create Dropdown List
+            const optionsDiv = document.createElement("DIV");
+            optionsDiv.setAttribute("class", "select-items");
+            
+            for (let i = 0; i < selectElement.length; i++) {
+                const opt = document.createElement("DIV");
+                opt.innerHTML = selectElement.options[i].innerHTML;
+                
+                // Style disabled options differently (e.g. placeholder "Select Method")
+                if (selectElement.options[i].disabled) {
+                    opt.style.color = "var(--gray)";
+                    opt.style.backgroundColor = "#f9fafb";
+                    opt.style.cursor = "not-allowed";
+                    // Do nothing on click
+                    opt.addEventListener("click", function(e) {
+                        e.stopPropagation();
+                    });
+                } else {
+                    opt.addEventListener("click", function(e) {
+                        e.stopPropagation();
+                        // Update native select
+                        selectElement.selectedIndex = i;
+                        selectedDiv.innerHTML = this.innerHTML;
+                        selectedDiv.style.color = "var(--dark)"; // Reset color if placeholder was active
+                        
+                        // Trigger change event to ensure app logic still works
+                        selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+                        
+                        // Force close UI immediately to prevent getting stuck on hover
+                        wrapper.classList.add('force-close');
+                        setTimeout(() => {
+                            wrapper.classList.remove('force-close');
+                        }, 400); // 400ms buffer for mouse to move away
+                    });
+                }
+                optionsDiv.appendChild(opt);
+            }
+            wrapper.appendChild(optionsDiv);
+            
+            // Allow programmatic updates to be reflected in UI
+            selectElement.addEventListener('change', function() {
+                selectedDiv.innerHTML = this.options[this.selectedIndex].innerHTML;
+                if (!this.options[this.selectedIndex].disabled) {
+                    selectedDiv.style.color = "var(--dark)";
+                }
+            });
+        }
+
+        // Initialize all native selects on page load
+        function initAllCustomSelects() {
+            document.querySelectorAll("select").forEach(sel => initializeCustomSelect(sel));
+        }
+        // -----------------------------------------------------
+
+        // Navigation Switching Logic (SPA Architecture)
+        function switchView(viewId, element) {
+            document.querySelectorAll('.view-section').forEach(view => {
+                view.style.display = 'none';
+            });
+            document.getElementById(viewId).style.display = 'block';
+            document.querySelectorAll('.nav-item').forEach(nav => {
+                nav.classList.remove('active');
+            });
+            element.classList.add('active');
+            lucide.createIcons();
+        }
+
         const form = document.getElementById('apiForm');
         const errorAlert = document.getElementById('error');
         const successAlert = document.getElementById('success');
@@ -995,7 +1236,9 @@
         let lastResults = [];
         let lastExecutedTestCases = [];
 
+        // INITIALIZE ICONS AND CUSTOM SELECTS
         lucide.createIcons();
+        document.addEventListener("DOMContentLoaded", initAllCustomSelects);
 
         const environmentUrls = {
             dev: 'https://api-dev.example.com',
@@ -1008,7 +1251,6 @@
             document.getElementById('query-params-section').style.display = (val === 'GET' || val === 'DELETE') ? 'block' : 'none';
             document.getElementById('payload-section').style.display = (val === 'GET' || val === 'DELETE') ? 'none' : 'block';
             
-            // Re-analyze payload if switching back to methods that use it
             if (val !== 'GET' && val !== 'DELETE') {
                 const payloadVal = payloadInput.value.trim();
                 if (payloadVal) {
@@ -1077,12 +1319,12 @@
                 row.innerHTML = `
                     <td style="font-family: monospace;">${key}</td>
                     <td>
-                        <select class="type-select" style="padding: 2px 4px; font-size: 0.75rem; width: auto; border: 1px solid var(--border); border-radius: 4px;">
+                        <select class="type-select">
                             ${typeOptions}
                         </select>
                     </td>
                     <td>
-                        <select class="required-select" style="padding: 2px 4px; font-size: 0.75rem; width: auto; border: 1px solid var(--border); border-radius: 4px;">
+                        <select class="required-select">
                             <option value="required">Required</option>
                             <option value="optional">Optional</option>
                         </select>
@@ -1090,6 +1332,9 @@
                 `;
                 tbody.appendChild(row);
             });
+            
+            // Initialize Custom Selects for dynamically added rows
+            tbody.querySelectorAll('select').forEach(sel => initializeCustomSelect(sel));
         }
 
         function flattenObject(obj, parent = '', res = {}) {
@@ -1098,14 +1343,11 @@
                 if (obj[key] !== null && typeof obj[key] === 'object') {
                     if (Array.isArray(obj[key])) {
                         if (obj[key].length > 0 && typeof obj[key][0] === 'object' && obj[key][0] !== null) {
-                            // If it's an array of objects, flatten the first element to get fields
                             flattenObject(obj[key][0], propName, res);
                         } else {
-                            // Empty array or array of primitives
                             res[propName] = obj[key];
                         }
                     } else {
-                        // It's a dict
                         flattenObject(obj[key], propName, res);
                     }
                 } else {
@@ -1161,14 +1403,19 @@
                 let allCases = [];
                 const methods = method === 'All' ? ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] : [method];
                 
-                // Collect field configurations
                 const fieldConfigs = {};
                 const rows = document.querySelectorAll('#fieldTableBody tr');
                 rows.forEach(row => {
                     const field = row.cells[0].textContent;
-                    const type = row.querySelector('.type-select').value;
-                    const required = row.querySelector('.required-select').value === 'required';
-                    fieldConfigs[field] = { type, required };
+                    // Because of custom select wrapper, original selects are hidden inside
+                    const typeSelect = row.querySelector('.type-select');
+                    const requiredSelect = row.querySelector('.required-select');
+                    if(typeSelect && requiredSelect) {
+                        fieldConfigs[field] = { 
+                            type: typeSelect.value, 
+                            required: requiredSelect.value === 'required' 
+                        };
+                    }
                 });
 
                 for (const m of methods) {
@@ -1200,18 +1447,17 @@
             currentEndpoint = endpoint;
             currentMethod = method;
             
-            // Sync UI inputs with the results being displayed
             if (endpoint) document.getElementById('endpoint').value = endpoint;
             if (method && method !== 'Various' && method !== 'All') {
-                document.getElementById('method').value = method;
+                const methodSelect = document.getElementById('method');
+                methodSelect.value = method;
+                methodSelect.dispatchEvent(new Event('change')); // Update visual UI
             }
             
-            // If the first test case has a payload and the current payload is empty or different, sync it
             if (testCases.length > 0 && testCases[0].input) {
                 let tcPayload = testCases[0].input;
                 if (typeof tcPayload !== 'string') tcPayload = JSON.stringify(tcPayload, null, 2);
                 
-                // Only update if current payload is "smaller" or empty (heuristic for syncing)
                 const currentVal = payloadInput.value.trim();
                 if (!currentVal || currentVal.length < tcPayload.length) {
                     payloadInput.value = tcPayload;
@@ -1232,16 +1478,6 @@
             testCases.forEach((tc, i) => {
                 const div = document.createElement('div');
                 div.className = 'test-case-card';
-               /* div.innerHTML = `
-                    <input type="checkbox" data-index="${i}" class="test-case-checkbox">
-                    <div style="flex:1">
-                        <div style="font-size:0.7rem; font-weight:700; color:var(--primary)">${tc.id}</div>
-                        <div style="font-size:0.9rem; font-weight:500;">${tc.scenario}</div>
-                    </div>
-                    <span class="badge ${tc.type.toLowerCase().includes('positive') ? 'badge-success' : 'badge-danger'}">${tc.type}</span>
-                    <span class="status-badge status-pending" id="status-${i}">Pending</span>
-                `;*/
-                
                 div.innerHTML = `
                     <div class="checkbox-col">
                     <input type="checkbox" data-index="${i}" class="test-case-checkbox">
@@ -1267,7 +1503,6 @@
             setupCheckboxListeners();
         }
 
-        
         function setupCheckboxListeners() {
             const master = document.getElementById('selectAllCheckbox');
             const cbs = document.querySelectorAll('.test-case-checkbox');
@@ -1280,38 +1515,33 @@
         }
 
         async function executeSelectedTests() {
-            // Validate currentTestCases exists
             if (!currentTestCases || !Array.isArray(currentTestCases)) {
-                showError('No test cases loaded. Please load test cases first.');
-                console.error('currentTestCases is not an array:', currentTestCases);
+                showError('No test cases loaded.');
                 return;
             }
             
             const selected = Array.from(document.querySelectorAll('.test-case-checkbox:checked')).map(cb => {
                 const index = cb.dataset.index;
-                if (index >= 0 && index < currentTestCases.length) {
-                    return currentTestCases[index];
-                } else {
-                    console.warn(`Invalid test case index: ${index}, currentTestCases length: ${currentTestCases.length}`);
-                    return null;
-                }
-            }).filter(tc => tc !== null); // Remove null entries
+                if (index >= 0 && index < currentTestCases.length) return currentTestCases[index];
+                return null;
+            }).filter(tc => tc !== null); 
             
             if (!selected.length) {
                 showError('Select at least one scenario');
                 return;
             }
 
-            console.log(`Executing ${selected.length} test cases`);
-            console.log('Selected test cases:', selected);
-
-            // Collect field configurations
             const fieldConfigs = {};
             document.querySelectorAll('#fieldTableBody tr').forEach(row => {
                 const field = row.cells[0].textContent;
-                const type = row.querySelector('.type-select').value;
-                const required = row.querySelector('.required-select').value === 'required';
-                fieldConfigs[field] = { type, required };
+                const typeSelect = row.querySelector('.type-select');
+                const requiredSelect = row.querySelector('.required-select');
+                if(typeSelect && requiredSelect) {
+                    fieldConfigs[field] = { 
+                        type: typeSelect.value, 
+                        required: requiredSelect.value === 'required' 
+                    };
+                }
             });
 
             const btn = document.getElementById('executeBtn');
@@ -1333,8 +1563,6 @@
                     fieldConfigs: fieldConfigs
                 };
                 
-                console.log('Sending execution request:', requestBody);
-                
                 const res = await fetch('/api/execute-tests', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1343,29 +1571,19 @@
                 
                 const latency = Math.round(performance.now() - start);
                 
-                // Check if response is OK
                 if (!res.ok) {
-                    let errorMsg = `Server returned ${res.status} ${res.statusText}`;
+                    let errorMsg = `Server returned ${res.status}`;
                     try {
                         const errorData = await res.json();
-                        errorMsg = errorData.error || errorData.message || errorMsg;
-                    } catch (e) {
-                        // If response is not JSON, use text
-                        const text = await res.text();
-                        if (text) errorMsg = `${errorMsg}: ${text.substring(0, 200)}`;
-                    }
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {}
                     throw new Error(errorMsg);
                 }
                 
                 const data = await res.json();
                 
-                // Check if API call was successful
-                if (!data.success) {
-                    const errorMsg = data.error || data.message || 'Execution failed';
-                    throw new Error(errorMsg);
-                }
+                if (!data.success) throw new Error(data.error || 'Execution failed');
                 
-                // Success case
                 lastResults = data.results;
                 lastExecutedTestCases = selected;
                 document.getElementById('exportResultsBtn').style.display = 'inline-flex';
@@ -1374,18 +1592,10 @@
                 resultsList.innerHTML = '';
                 let passed = 0;
                 
-                // Check if results exist
-                if (!data.results || !Array.isArray(data.results)) {
-                    throw new Error('No results returned from server');
-                }
-                
-                console.log(`Execution successful: ${data.results.length} results`);
-                
                 data.results.forEach((r, i) => {
                     const isPass = r.status === 'pass';
                     if (isPass) passed++;
                     
-                    // Update status badge for each test case
                     try {
                         const idx = Array.from(document.querySelectorAll('.test-case-checkbox:checked'))[i].dataset.index;
                         const badge = document.getElementById(`status-${idx}`);
@@ -1393,11 +1603,8 @@
                             badge.className = `status-badge status-${isPass ? 'pass' : 'fail'}`;
                             badge.textContent = isPass ? 'Passed' : 'Failed';
                         }
-                    } catch (e) {
-                        console.warn(`Could not update badge for result ${i}:`, e);
-                    }
+                    } catch (e) {}
 
-                    // Create result display item
                     const item = document.createElement('div');
                     item.className = 'result-item';
                     item.style.borderLeft = `4px solid ${isPass ? 'var(--success)' : 'var(--danger)'}`;
@@ -1418,7 +1625,6 @@
                 showSuccess(`Execution complete: ${passed}/${data.results.length} passed`);
                 
             } catch (e) {
-                console.error('Execution error:', e);
                 showError(`Execution failed: ${e.message}`);
             }
             finally {
@@ -1446,95 +1652,6 @@
         }
 
         async function downloadExcel() {
-    const method = document.getElementById('method').value;
-    const endpoint = document.getElementById('endpoint').value;
-
-    if (!method || !endpoint) {
-        showError('Fill required fields first');
-        return;
-    }
-
-    // Collect field configurations
-    const fieldConfigs = {};
-    const rows = document.querySelectorAll('#fieldTableBody tr');
-
-    rows.forEach(row => {
-        const field = row.cells[0].textContent.trim();
-        const type = row.querySelector('.type-select').value;
-        const required = row.querySelector('.required-select').value === 'required';
-
-        fieldConfigs[field] = { type, required };
-    });
-
-    try {
-        const res = await fetch('/api/export-excel', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                endpoint,
-                method,
-                payload: payloadInput.value,
-                field_name: document.getElementById('field-name').value,
-                search_string: document.getElementById('search-txt').value,
-                field_configs: fieldConfigs,
-                baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock')
-                    ? document.getElementById('customUrl').value
-                    : environmentUrls[currentEnvironment],
-                param_type: document.getElementById('param-type').value,
-                environment: currentEnvironment
-            })
-        });
-
-        if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData.error || `Server returned ${res.status}`);
-        }
-
-        const blob = await res.blob();
-
-        // ✅ Validate blob size
-        if (blob.size === 0) {
-            throw new Error("Empty file received");
-        }
-
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-
-        a.href = url;
-        a.download = `${method}_${endpoint.replace(/\//g, '_')}_API_Tests_${Date.now()}.xlsx`;
-
-        document.body.appendChild(a);  // ✅ IMPORTANT
-        a.click();
-        a.remove();
-
-        window.URL.revokeObjectURL(url); // cleanup
-
-    } catch (e) {
-        showError('Export failed: ' + e.message);
-    }
-}
-
-        /* Export Modal Functions */
-        function showExportOptions() {
-            const modal = document.getElementById('exportModal');
-            modal.style.display = 'flex';
-        }
-
-        function hideExportOptions() {
-            const modal = document.getElementById('exportModal');
-            modal.style.display = 'none';
-        }
-
-        async function saveToLocal() {
-            hideExportOptions();
-            await downloadExcel();
-        }
-
-        async function saveToDatabase() {
-            hideExportOptions();
-            
             const method = document.getElementById('method').value;
             const endpoint = document.getElementById('endpoint').value;
 
@@ -1543,49 +1660,83 @@
                 return;
             }
 
-            // Collect field configurations
             const fieldConfigs = {};
-            const rows = document.querySelectorAll('#fieldTableBody tr');
-
-            rows.forEach(row => {
+            document.querySelectorAll('#fieldTableBody tr').forEach(row => {
                 const field = row.cells[0].textContent.trim();
                 const type = row.querySelector('.type-select').value;
                 const required = row.querySelector('.required-select').value === 'required';
-
                 fieldConfigs[field] = { type, required };
             });
 
             try {
-                showSuccess('Saving test cases to database...');
-                
-                const res = await fetch('/api/save-to-database', {
+                const res = await fetch('/api/export-excel', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        endpoint,
-                        method,
+                        endpoint, method,
                         payload: payloadInput.value,
                         field_name: document.getElementById('field-name').value,
                         search_string: document.getElementById('search-txt').value,
                         field_configs: fieldConfigs,
-                        baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock')
-                            ? document.getElementById('customUrl').value
-                            : environmentUrls[currentEnvironment],
+                        baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock') ? document.getElementById('customUrl').value : environmentUrls[currentEnvironment],
                         param_type: document.getElementById('param-type').value,
                         environment: currentEnvironment
                     })
                 });
 
-                if (!res.ok) {
-                    const errorData = await res.json().catch(() => ({}));
-                    throw new Error(errorData.error || `Server returned ${res.status}`);
-                }
+                if (!res.ok) throw new Error("Export Failed");
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${method}_${endpoint.replace(/\//g, '_')}_API_Tests_${Date.now()}.xlsx`;
+                document.body.appendChild(a); 
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                showError('Export failed: ' + e.message);
+            }
+        }
 
+        function showExportOptions() { document.getElementById('exportModal').style.display = 'flex'; }
+        function hideExportOptions() { document.getElementById('exportModal').style.display = 'none'; }
+        async function saveToLocal() { hideExportOptions(); await downloadExcel(); }
+
+        async function saveToDatabase() {
+            hideExportOptions();
+            const method = document.getElementById('method').value;
+            const endpoint = document.getElementById('endpoint').value;
+
+            if (!method || !endpoint) { showError('Fill required fields first'); return; }
+
+            const fieldConfigs = {};
+            document.querySelectorAll('#fieldTableBody tr').forEach(row => {
+                const field = row.cells[0].textContent.trim();
+                const type = row.querySelector('.type-select').value;
+                const required = row.querySelector('.required-select').value === 'required';
+                fieldConfigs[field] = { type, required };
+            });
+
+            try {
+                showSuccess('Saving test cases to database...');
+                const res = await fetch('/api/save-to-database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        endpoint, method,
+                        payload: payloadInput.value,
+                        field_name: document.getElementById('field-name').value,
+                        search_string: document.getElementById('search-txt').value,
+                        field_configs: fieldConfigs,
+                        baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock') ? document.getElementById('customUrl').value : environmentUrls[currentEnvironment],
+                        param_type: document.getElementById('param-type').value,
+                        environment: currentEnvironment
+                    })
+                });
+                if (!res.ok) throw new Error("Save Failed");
                 const result = await res.json();
-                showSuccess(`Test cases saved to database! Session ID: ${result.session_id}`);
-                
+                showSuccess(`Test cases saved! Session ID: ${result.session_id}`);
             } catch (e) {
                 showError('Database save failed: ' + e.message);
             }
@@ -1593,7 +1744,6 @@
 
         async function exportResultsExcel() {
             if (!lastResults.length) { showError('No results to export'); return; }
-            
             const btn = document.getElementById('exportResultsBtn');
             const original = btn.innerHTML;
             btn.disabled = true;
@@ -1610,9 +1760,7 @@
                         method: currentMethod
                     })
                 });
-                
                 if (!res.ok) throw new Error('Export failed');
-                
                 const blob = await res.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -1629,29 +1777,21 @@
             }
         }
 
-        // Database loading functions
-        function showDatabaseSessions() {
-            const modal = document.getElementById('databaseModal');
-            modal.style.display = 'flex';
-            loadDatabaseSessions();
-        }
-
-        function hideDatabaseModal() {
-            const modal = document.getElementById('databaseModal');
-            modal.style.display = 'none';
-        }
-
+        function showDatabaseSessions() { document.getElementById('databaseModal').style.display = 'flex'; loadDatabaseSessions(); }
+        function hideDatabaseModal() { document.getElementById('databaseModal').style.display = 'none'; }
+        
         function clearDatabaseFilters() {
             document.getElementById('dbBaseUrlFilter').value = '';
             document.getElementById('dbEndpointFilter').value = '';
             document.getElementById('dbMethodFilter').value = '';
+            // Reset custom select visual for the filter
+            document.getElementById('dbMethodFilter').dispatchEvent(new Event('change'));
             loadDatabaseSessions();
         }
 
         async function loadDatabaseSessions() {
             const loadingEl = document.getElementById('databaseSessionsLoading');
             const sessionsListEl = document.getElementById('databaseSessionsList');
-            
             const baseUrlFilter = document.getElementById('dbBaseUrlFilter').value;
             const endpointFilter = document.getElementById('dbEndpointFilter').value;
             const methodFilter = document.getElementById('dbMethodFilter').value;
@@ -1660,43 +1800,30 @@
             sessionsListEl.innerHTML = '';
             
             try {
-                // Build query parameters
                 const params = new URLSearchParams();
                 if (baseUrlFilter) params.append('base_url', baseUrlFilter);
                 if (endpointFilter) params.append('endpoint', endpointFilter);
                 if (methodFilter) params.append('method', methodFilter);
                 
                 const res = await fetch(`/api/database-sessions?${params.toString()}`);
-                
-                if (!res.ok) {
-                    throw new Error(`Failed to load sessions: ${res.status}`);
-                }
-                
+                if (!res.ok) throw new Error(`Failed to load sessions: ${res.status}`);
                 const data = await res.json();
-                
-                if (!data.success) {
-                    throw new Error(data.message || 'Failed to load sessions');
-                }
+                if (!data.success) throw new Error(data.message || 'Failed to load sessions');
                 
                 const sessions = data.sessions || [];
-                
                 if (sessions.length === 0) {
                     sessionsListEl.innerHTML = `
                         <p style="text-align: center; color: var(--gray); padding: 40px 0;">
                             <i data-lucide="search" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3;"></i><br>
                             No sessions found matching your filters
-                        </p>
-                    `;
+                        </p>`;
                     return;
                 }
                 
-                // Create sessions list
                 let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
-                
                 sessions.forEach(session => {
                     const sessionDate = new Date(session.created_at).toLocaleString();
                     const testCasesCount = session.test_cases_count || 0;
-                    
                     html += `
                         <div class="test-case-card" style="cursor: pointer;" onclick="loadSessionTestCases('${session.session_id}')">
                             <div style="flex: 1;">
@@ -1718,22 +1845,17 @@
                                 </div>
                             </div>
                             <i data-lucide="chevron-right" style="width: 20px; height: 20px; color: var(--gray);"></i>
-                        </div>
-                    `;
+                        </div>`;
                 });
-                
                 html += '</div>';
                 sessionsListEl.innerHTML = html;
                 lucide.createIcons();
-                
             } catch (error) {
                 sessionsListEl.innerHTML = `
                     <div style="text-align: center; padding: 40px 0; color: var(--danger);">
                         <i data-lucide="alert-circle" style="width: 48px; height: 48px; margin-bottom: 12px;"></i><br>
-                        <strong>Error loading sessions:</strong><br>
-                        ${error.message}
-                    </div>
-                `;
+                        <strong>Error loading sessions:</strong><br>${error.message}
+                    </div>`;
                 lucide.createIcons();
             } finally {
                 loadingEl.style.display = 'none';
@@ -1743,108 +1865,78 @@
         async function loadSessionTestCases(sessionId) {
             try {
                 showSuccess(`Loading test cases from session ${sessionId}...`);
-                
                 const res = await fetch(`/api/database-test-cases/${sessionId}`);
-                
-                if (!res.ok) {
-                    throw new Error(`Failed to load test cases: ${res.status}`);
-                }
-                
+                if (!res.ok) throw new Error(`Failed to load test cases: ${res.status}`);
                 const data = await res.json();
-                
-                if (!data.success) {
-                    throw new Error(data.message || 'Failed to load test cases');
-                }
+                if (!data.success) throw new Error(data.message || 'Failed to load test cases');
                 
                 const sessionInfo = data.session_info;
                 const testCases = data.test_cases || [];
                 
-                // Populate the form with session info
-                if (sessionInfo.endpoint) {
-                    document.getElementById('endpoint').value = sessionInfo.endpoint;
-                }
+                if (sessionInfo.endpoint) document.getElementById('endpoint').value = sessionInfo.endpoint;
                 if (sessionInfo.method) {
-                    document.getElementById('method').value = sessionInfo.method;
+                    const mSelect = document.getElementById('method');
+                    mSelect.value = sessionInfo.method;
+                    mSelect.dispatchEvent(new Event('change'));
                 }
+                
                 if (sessionInfo.base_url) {
-                    // Check if base_url matches any environment
                     const envSelect = document.getElementById('environment');
                     let foundEnv = false;
-                    
                     for (const option of envSelect.options) {
-                        if (option.value === 'custom' || option.value === 'mock') {
-                            continue;
-                        }
+                        if (option.value === 'custom' || option.value === 'mock') continue;
                         if (environmentUrls[option.value] === sessionInfo.base_url) {
                             envSelect.value = option.value;
+                            envSelect.dispatchEvent(new Event('change'));
                             foundEnv = true;
                             break;
                         }
                     }
-                    
                     if (!foundEnv) {
                         envSelect.value = 'custom';
+                        envSelect.dispatchEvent(new Event('change'));
                         document.getElementById('customUrl').value = sessionInfo.base_url;
                     }
                 }
                 
-                // Set current test cases and display them
                 currentTestCases = testCases;
                 currentEndpoint = sessionInfo.endpoint || '';
                 currentMethod = sessionInfo.method || '';
                 
-                // Populate payload input if we have test cases with input data
                 if (testCases.length > 0) {
-                    // Try to find a test case with input data
                     const testCaseWithInput = testCases.find(tc => tc.input && Object.keys(tc.input).length > 0);
                     if (testCaseWithInput && testCaseWithInput.input) {
                         let inputData = testCaseWithInput.input;
-                        if (typeof inputData !== 'string') {
-                            inputData = JSON.stringify(inputData, null, 2);
-                        }
+                        if (typeof inputData !== 'string') inputData = JSON.stringify(inputData, null, 2);
                         document.getElementById('payload').value = inputData;
-                        
-                        // Analyze payload to populate field configurations
                         try {
                             const json = typeof inputData === 'string' ? JSON.parse(inputData) : inputData;
                             analyzePayload(json);
-                        } catch(e) {
-                            console.log('Could not analyze payload:', e);
-                        }
+                        } catch(e) {}
                     }
                 }
                 
-                // Update UI
                 displayTestCases(testCases);
                 hideDatabaseModal();
-                
                 showSuccess(`Loaded ${testCases.length} test cases from database`);
-                
             } catch (error) {
                 showError(`Failed to load test cases: ${error.message}`);
             }
         }
 
-        // Helper function to display test cases with Category and Execution status
         function displayTestCases(testCases) {
             if (!testCases || testCases.length === 0) {
                 showError('No test cases to display');
                 return;
             }
             
-            // Update dashboard stats
             document.getElementById('dash-generated').textContent = testCases.length;
-            
-            // Show test cases wrapper
             document.getElementById('testCasesWrapper').style.display = 'block';
             
-            // Clear existing test cases
             const testCasesList = document.getElementById('testCasesList');
             testCasesList.innerHTML = '';
             
-            // Add test cases
             testCases.forEach((tc, index) => {
-                // Determine category class based on type
                 const categoryType = (tc.type || 'Positive').toLowerCase();
                 let categoryClass = 'category-positive';
                 let categoryText = tc.type || 'Positive';
@@ -1859,27 +1951,22 @@
                     categoryClass = 'category-performance';
                 }
                 
-                // Determine execution status
-                // Check if this test case has been executed before (from lastResults)
                 let executionStatus = 'not-executed';
                 let executionText = 'Not Executed';
                 let executionClass = 'status-not-executed';
                 
                 if (lastResults && lastResults.length > 0) {
-                    // Find if this test case was in the last execution
                     const executedTestCase = lastExecutedTestCases.find(executedTc =>
                         executedTc.id === tc.id ||
                         executedTc.scenario === tc.scenario ||
                         (executedTc.test_case_id && executedTc.test_case_id === tc.test_case_id) ||
                         (executedTc.test_case_number && executedTc.test_case_number === tc.test_case_number)
                     );
-                    
                     if (executedTestCase) {
-                        // Find the corresponding result
                         const resultIndex = lastExecutedTestCases.indexOf(executedTestCase);
                         if (resultIndex >= 0 && resultIndex < lastResults.length) {
                             const result = lastResults[resultIndex];
-                            if (result.success) {
+                            if (result.success || result.status === 'pass') {
                                 executionStatus = 'passed';
                                 executionText = 'Passed';
                                 executionClass = 'status-passed';
@@ -1892,7 +1979,6 @@
                     }
                 }
                 
-                // Format expected status for display
                 let expectedDisplay = 'N/A';
                 if (tc.expected_status && Array.isArray(tc.expected_status)) {
                     expectedDisplay = tc.expected_status.join(', ');
@@ -1911,40 +1997,29 @@
                         <div class="tc-scenario">${tc.scenario || 'Test Scenario'}</div>
                     </div>
                     <div class="category-col">
-                        <div class="category-badge ${categoryClass}">
-                            ${categoryText}
-                        </div>
+                        <div class="category-badge ${categoryClass}">${categoryText}</div>
                     </div>
                     <div class="expected-col">
-                        <div class="expected-badge" title="Expected HTTP Status">
-                            ${expectedDisplay}
-                        </div>
+                        <div class="expected-badge" title="Expected HTTP Status">${expectedDisplay}</div>
                     </div>
                     <div class="status-col">
-                        <div class="execution-badge ${executionClass}">
-                            ${executionText}
-                        </div>
+                        <div class="execution-badge ${executionClass}" id="status-${index}">${executionText}</div>
                     </div>
                 `;
                 testCasesList.appendChild(testCaseCard);
             });
             
-            // Update select all checkbox
             document.getElementById('selectAllCheckbox').checked = true;
             document.getElementById('selectAllCheckbox').addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll('.test-case-checkbox');
                 checkboxes.forEach(cb => cb.checked = this.checked);
             });
-            
-            // Update individual checkbox event listeners
             document.querySelectorAll('.test-case-checkbox').forEach(cb => {
                 cb.addEventListener('change', function() {
                     const allChecked = Array.from(document.querySelectorAll('.test-case-checkbox')).every(c => c.checked);
                     document.getElementById('selectAllCheckbox').checked = allChecked;
                 });
             });
-            
-            // Show execute button
             document.getElementById('executeBtn').style.display = 'inline-flex';
         }
     </script>

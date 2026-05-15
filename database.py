@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional, Tuple
 class TestCaseDatabase:
     """Database operations for test case storage."""
     
-    def __init__(self, config: Dict[str, str] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize database connection.
         
@@ -32,7 +32,7 @@ class TestCaseDatabase:
         self.config = config
         self.connection_string = self._build_connection_string(config)
         
-    def _get_default_config(self) -> Dict[str, str]:
+    def _get_default_config(self) -> Dict[str, Any]:
         """Get default database configuration."""
         return {
             'server': 'LPT2149-B1',
@@ -41,7 +41,7 @@ class TestCaseDatabase:
             'use_windows_auth': True  # Use Windows Authentication
         }
     
-    def _build_connection_string(self, config: Dict[str, str]) -> str:
+    def _build_connection_string(self, config: Dict[str, Any]) -> str:
         """Build ODBC connection string from configuration."""
         driver = config.get('driver', '{ODBC Driver 17 for SQL Server}')
         server = config['server']
@@ -256,6 +256,10 @@ class TestCaseDatabase:
             try:
                 conn = self.get_connection()
                 cursor = conn.cursor()
+
+                def fetch_scalar() -> int:
+                    row = cursor.fetchone()
+                    return int(row[0]) if row and row[0] is not None else 0
                 
                 # Check if test_case_sessions table exists
                 cursor.execute("""
@@ -263,7 +267,7 @@ class TestCaseDatabase:
                     FROM INFORMATION_SCHEMA.TABLES
                     WHERE TABLE_NAME = 'test_case_sessions'
                 """)
-                table_count = cursor.fetchone()[0]
+                table_count = fetch_scalar()
                 
                 if table_count == 1:
                     # Check if table_name column exists
@@ -272,7 +276,7 @@ class TestCaseDatabase:
                         FROM INFORMATION_SCHEMA.COLUMNS
                         WHERE TABLE_NAME = 'test_case_sessions' AND COLUMN_NAME = 'table_name'
                     """)
-                    column_count = cursor.fetchone()[0]
+                    column_count = fetch_scalar()
                     
                     if column_count == 1:
                         conn.close()
@@ -424,6 +428,7 @@ class TestCaseDatabase:
         
         session_id = str(uuid.uuid4())
         saved_count = 0
+        conn = None
         
         try:
             conn = self.get_connection()
@@ -525,7 +530,8 @@ class TestCaseDatabase:
         except Exception as e:
             # Rollback on error
             try:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
             except:
                 pass
             
@@ -553,6 +559,10 @@ class TestCaseDatabase:
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
+
+            def fetch_scalar() -> int:
+                row = cursor.fetchone()
+                return int(row[0]) if row and row[0] is not None else 0
             
             # Build query with optional filters
             query = """
@@ -587,7 +597,7 @@ class TestCaseDatabase:
                 count_query += " AND http_method = ?"
             
             cursor.execute(count_query, params)
-            total_count = cursor.fetchone()[0]
+            total_count = fetch_scalar()
             
             # Get paginated results
             query += " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"

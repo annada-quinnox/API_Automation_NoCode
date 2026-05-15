@@ -9,6 +9,11 @@ import re
 import requests
 from datetime import datetime
 from database import get_database, initialize_database
+from typing import cast
+from openpyxl.worksheet.worksheet import Worksheet
+
+
+DEFAULT_SORT_HEADER = "created_at"
 
 
 def api_success(data=None, status_code=200, **kwargs):
@@ -385,6 +390,20 @@ def extract_response_code(expected_input):
     
     # Handle string input (Excel test cases)
     expected_str = str(expected_input)
+
+    # Support scenarios like "400 Bad Request or 200 with default sort"
+    # where APIs may either reject invalid sort or fallback to a default sort.
+    expected_lower = expected_str.lower()
+    if 'default sort' in expected_lower or 'fallback' in expected_lower:
+        codes = re.findall(r'\b([1-5]\d{2})\b', expected_str)
+        normalized = []
+        for c in codes:
+            if c not in normalized:
+                normalized.append(c)
+        if '200' not in normalized:
+            normalized.append('200')
+        if normalized:
+            return normalized
     
     # Look for all 3-digit numbers starting with 1-5 (standard HTTP status codes)
     matches = re.findall(r'\b([1-5]\d{2})\b', expected_str)
@@ -494,7 +513,9 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
     """
     styles = _create_excel_styles()
     wb = openpyxl.Workbook()
-    ws = wb.active
+    ws = cast(Worksheet | None, wb.active)
+    if ws is None:
+        raise ValueError("Failed to create worksheet")
     ws.title = "API Test Cases"
 
     if include_base_url:
@@ -718,7 +739,9 @@ def export_results():
             return api_error('No results provided')
 
         wb = openpyxl.Workbook()
-        ws = wb.active
+        ws = cast(Worksheet | None, wb.active)
+        if ws is None:
+            return api_error('Failed to create worksheet')
         ws.title = "API Test Results"
 
         header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
@@ -823,12 +846,15 @@ def upload_excel():
             return api_error('No file part')
         
         file = request.files['file']
-        if file.filename == '':
+        filename = file.filename or ''
+        if filename == '':
             return api_error('No selected file')
         
-        if file and file.filename.endswith(('.xlsx', '.xls')):
-            wb = openpyxl.load_workbook(file)
-            ws = wb.active
+        if file and filename.lower().endswith(('.xlsx', '.xls')):
+            wb = openpyxl.load_workbook(file.stream)
+            ws = cast(Worksheet | None, wb.active)
+            if ws is None:
+                return api_error('Uploaded workbook has no active sheet')
             
             test_cases = []
             headers = [cell.value for cell in ws[1]]
@@ -841,7 +867,7 @@ def upload_excel():
             
             for i, header in enumerate(headers):
                 if not header: continue
-                h = header.lower()
+                h = str(header).strip().lower()
                 if 'id' in h: col_map['id'] = i
                 elif 'method' in h: col_map['method'] = i
                 elif 'name' in h or 'scenario' in h: col_map['scenario'] = i
@@ -1005,6 +1031,22 @@ def _get_error_code_from_scenario(test_type, scenario):
 
 def _get_fallback_response(test_type, method, scenario, original_payload, expected):
     """Generate fallback mock response based on test type when status code extraction fails."""
+    scenario_lower = (scenario or '').lower()
+    expected_lower = str(expected or '').lower()
+
+    # For invalid sort fields, return a deterministic success fallback that
+    # advertises the default sort key instead of a generic error response.
+    if 'sort' in scenario_lower and ('invalid' in scenario_lower or 'default sort' in expected_lower or 'fallback' in expected_lower):
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                "message": "Invalid sort field received. Applied default sorting.",
+                "sortHeader": DEFAULT_SORT_HEADER,
+                "data": []
+            }),
+            'expected': expected
+        }
+
     if test_type in ['Positive', 'Integration', 'Performance']:
         if method == 'POST':
             body = json.dumps(original_payload) if original_payload and isinstance(original_payload, (dict, list)) else json.dumps({"message": "Resource created successfully", "id": "mock_001"})
@@ -1114,8 +1156,28 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
     current_endpoint = endpoint
     payload = test_case.get('input', {})
     
-    if isinstance(payload, str) and payload.startswith('/'):
-        current_endpoint = payload
+    # --- ROBUST GET & DELETE PAYLOAD HANDLING ---
+    if method in ['GET', 'DELETE']:
+        if isinstance(payload, str):
+            if payload.startswith('/'):
+                current_endpoint = payload
+                payload = {}
+            elif payload.startswith('?') or '=' in payload:
+                payload = parse_query_params(payload)
+            else:
+                current_endpoint = current_endpoint.rstrip('/') + '/' + payload
+                payload = {}
+        elif payload is not None and not isinstance(payload, (dict, list)):
+            current_endpoint = current_endpoint.rstrip('/') + '/' + str(payload)
+            payload = {}
+        
+        # Update test_case input so downstream mock/validation uses the cleaned dict
+        test_case['input'] = payload
+    else:
+        # Standard override for POST/PUT/PATCH
+        if isinstance(payload, str) and payload.startswith('/'):
+            current_endpoint = payload
+    # --------------------------------------------
     
     if environment == 'mock' or base_url == 'mock':
         return execute_mock_test(test_id, method, test_case, expected, original_payload, field_configs, base_url, current_endpoint)
@@ -1177,16 +1239,9 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         timeout = 10
 
         if method == 'GET':
-            # If payload starts with / or ?, it's already handled in url or will be in params
-            if isinstance(payload, str):
-                if payload.startswith('/'):
-                    # It was already merged into url via build_url(current_endpoint, ...)
-                    response = requests.get(url, headers=headers, timeout=timeout)
-                else:
-                    params = parse_query_params(payload)
-                    response = requests.get(url, params=params, headers=headers, timeout=timeout)
-            else:
-                response = requests.get(url, params=payload, headers=headers, timeout=timeout)
+            # Payload is now guaranteed to be a valid dictionary or empty
+            params = payload if isinstance(payload, dict) else {}
+            response = requests.get(url, params=params, headers=headers, timeout=timeout)
         elif method == 'POST':
             response = requests.post(url, data=payload_json, headers=headers, timeout=timeout)
         elif method == 'PUT':
@@ -1242,6 +1297,13 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             details_parts.append(f"Source: {source}")
         details_parts.append(f"Expected: {format_expected_for_display(expected)}")
         details_parts.append(f"Actual: HTTP {response.status_code}")
+
+        if isinstance(expected, str):
+            expected_lower = expected.lower()
+        else:
+            expected_lower = str(expected).lower()
+        if ('default sort' in expected_lower or 'fallback' in expected_lower) and response.status_code == 200:
+            details_parts.append(f"Sort Fallback: Applied default sort header '{DEFAULT_SORT_HEADER}'")
         
         # Add schema validation results if validation failed
         if not schema_valid and schema_errors:
@@ -1365,20 +1427,19 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     
     if base_url and base_url != 'mock':
         url = build_url(current_endpoint, base_url)
-        # Use requests logic to build the exact URL if it's a GET request
-        if method == 'GET' and isinstance(payload, str) and not payload.startswith('/'):
-            params = parse_query_params(payload)
-            # If the endpoint itself had query params, they'll be in 'url'
-            # requests.Request will merge them with 'params'
-            req = requests.Request('GET', url, params=params)
+        # Use requests logic to build the exact URL if it's a GET request with query params
+        if method == 'GET' and payload and isinstance(payload, dict):
+            req = requests.Request('GET', url, params=payload)
             prepared = req.prepare()
             mock_url = prepared.url
         else:
             mock_url = url
     else:
         # Fallback for mock environment without base_url
-        if method == 'GET' and isinstance(payload, str) and payload.startswith('?'):
-             mock_url = f"MOCK://{method}{current_endpoint}{payload}"
+        if method == 'GET' and payload and isinstance(payload, dict):
+             import urllib.parse
+             qs = urllib.parse.urlencode(payload)
+             mock_url = f"MOCK://{method}{current_endpoint}?{qs}"
         else:
              mock_url = f"MOCK://{method}{current_endpoint}"
 
@@ -1411,6 +1472,12 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     
     details_parts.append(f"Expected: {format_expected_for_display(expected)}")
     details_parts.append(f"Actual: HTTP {status_code}")
+    if isinstance(expected, str):
+        expected_lower = expected.lower()
+    else:
+        expected_lower = str(expected).lower()
+    if ('default sort' in expected_lower or 'fallback' in expected_lower) and status_code == 200:
+        details_parts.append(f"Sort Fallback: Applied default sort header '{DEFAULT_SORT_HEADER}'")
     details_parts.append(f"\nResponse:\n{mock_response['body']}")
     
     return {
