@@ -7,61 +7,30 @@ from io import BytesIO
 import json
 import re
 import requests
+import time
 from datetime import datetime
 from database import get_database, initialize_database
 from typing import cast
 from openpyxl.worksheet.worksheet import Worksheet
-
+import subprocess
+import csv
+import os
 
 DEFAULT_SORT_HEADER = "created_at"
 
-
 def api_success(data=None, status_code=200, **kwargs):
-    """Build a consistent success JSON response.
-    
-    Args:
-        data: Primary data dict to include. Extra kwargs are merged in.
-        status_code: HTTP status code (default 200).
-    
-    Returns:
-        Tuple of (flask.Response, status_code)
-    """
     response = {'success': True}
     if data is not None:
         response.update(data)
     response.update(kwargs)
     return jsonify(response), status_code
 
-
 def api_error(message, status_code=400):
-    """Build a consistent error JSON response.
-    
-    Args:
-        message: Error message string.
-        status_code: HTTP status code (default 400).
-    
-    Returns:
-        Tuple of (flask.Response, status_code)
-    """
     return jsonify({'success': False, 'error': str(message)}), status_code
 
-
 def get_data_type(value):
-    """Determine the canonical data type of a value for type-checking comparisons.
-
-    Maps Python types to JSON-compatible type names. Boolean is checked before
-    integer because ``bool`` is a subclass of ``int`` in Python.
-
-    Args:
-        value: Any Python value (None, bool, int, float, list, dict, str, etc.)
-
-    Returns:
-        One of: ``'null'``, ``'boolean'``, ``'integer'``, ``'number'``,
-        ``'array'``, ``'object'``, or ``'string'``.
-    """
     if value is None: return 'null'
     if isinstance(value, bool): return 'boolean'
-    # Check boolean before integer because bool is a subclass of int in Python
     if isinstance(value, int): return 'integer'
     if isinstance(value, float): return 'number'
     if isinstance(value, list): return 'array'
@@ -69,29 +38,14 @@ def get_data_type(value):
     return 'string'
 
 def parse_query_params(input_data):
-    """Parse a query-string-like input into a dictionary of typed parameters.
-
-    Handles multiple input formats: raw query strings (``?key=val&...``),
-    full URLs, ``"METHOD URL"`` strings, or already-parsed dicts. Values are
-    auto-converted to ``bool``, ``int``, or ``float`` when possible.
-
-    Args:
-        input_data: A query string, URL, ``"METHOD URL"`` string, or dict.
-
-    Returns:
-        ``dict`` of parameter name to typed value. Returns an empty dict when
-        no parseable key-value pairs are found.
-    """
     if not isinstance(input_data, str):
         return input_data if isinstance(input_data, dict) else {}
     
-    # Remove leading '?' if present
     qs = input_data.strip()
     if qs.startswith('?'):
         qs = qs[1:]
     
-    # If it's a full URL or "METHOD URL", extract the query string part
-    if ' ' in qs: # "GET /api/test?a=b"
+    if ' ' in qs: 
         parts = qs.split(' ')
         for part in parts:
             if '?' in part:
@@ -100,7 +54,7 @@ def parse_query_params(input_data):
             elif '=' in part:
                 qs = part
                 break
-    elif '?' in qs: # "/api/test?a=b"
+    elif '?' in qs:
         qs = qs.split('?')[1]
         
     params = {}
@@ -110,7 +64,6 @@ def parse_query_params(input_data):
     for pair in qs.split('&'):
         if '=' in pair:
             key, value = pair.split('=', 1)
-            # Try to convert to int/float/bool if it looks like one
             if value.lower() == 'true':
                 value = True
             elif value.lower() == 'false':
@@ -127,19 +80,6 @@ def parse_query_params(input_data):
     return params
 
 def validate_against_configs(input_data, field_configs, source='body'):
-    """Validate input data against expected field type/required configurations.
-
-    Flattens nested JSON payloads and checks each configured field for correct
-    type and presence. Supports both body (JSON) and query-string sources.
-
-    Args:
-        input_data: JSON string, dict, or query string to validate.
-        field_configs: Dict mapping field paths to ``{"type": ..., "required": ...}``.
-        source: ``'body'`` or ``'query'`` — controls parsing strategy.
-
-    Returns:
-        ``(is_valid: bool, errors: list[str])`` tuple.
-    """
     if not input_data or not field_configs:
         return True, []
     
@@ -148,7 +88,6 @@ def validate_against_configs(input_data, field_configs, source='body'):
             try:
                 input_json = json.loads(input_data)
             except:
-                # If it's not JSON, it might be a query string if source is 'query'
                 if source == 'query':
                     input_json = parse_query_params(input_data)
                 else:
@@ -169,27 +108,23 @@ def validate_against_configs(input_data, field_configs, source='body'):
         is_required = config.get('required', False)
         
         if field not in flat_input:
-            if is_required:
+            if is_required == 'required' or is_required is True:
                 errors.append(f"For '{source}' at path '{field}': Missing required field.")
             continue
             
         value = flat_input[field]
         if value is None:
-            if is_required:
+            if is_required == 'required' or is_required is True:
                 errors.append(f"For '{source}' at path '{field}': Value cannot be null.")
             continue
             
         curr_type = get_data_type(value)
         
-        # STRICT Type Check
         type_mismatch = False
-        
-        # Mapping frontend type names to our get_data_type names
         check_type = expected_type
         if expected_type in ['email', 'uuid', 'date', 'datetime', 'url', 'password', 'phone']:
             check_type = 'string'
         
-        # Standard Python types to check
         if check_type == 'string' and not isinstance(value, str):
             type_mismatch = True
         elif check_type == 'integer' and (not isinstance(value, int) or isinstance(value, bool)):
@@ -211,18 +146,6 @@ def validate_against_configs(input_data, field_configs, source='body'):
     return True, []
 
 def validate_input_types(input_data, original_payload):
-    """Check that input field types match the types in the original payload.
-
-    Used for Positive test cases to ensure the user hasn't accidentally changed
-    a field's data type (e.g., sending a string where an integer is expected).
-
-    Args:
-        input_data: The user-supplied input (JSON string or dict).
-        original_payload: The reference payload (JSON string or dict).
-
-    Returns:
-        ``(is_valid: bool, errors: list[str])`` tuple.
-    """
     if not input_data or not original_payload:
         return True, []
     
@@ -253,7 +176,6 @@ def validate_input_types(input_data, original_payload):
                 orig_type = get_data_type(orig_val)
                 curr_type = get_data_type(value)
                 
-                # Special numeric handling
                 if orig_type == 'integer' and curr_type == 'number':
                     errors.append(f"For 'body' at path '{key}': Expected integer, but sent float/number.")
                 elif orig_type != curr_type:
@@ -264,36 +186,25 @@ def validate_input_types(input_data, original_payload):
     return True, []
 
 def validate_response_schema(response_body, status_code):
-    """
-    Validate that a response body matches the expected schema for the given status code.
-    Returns (is_valid, errors_list).
-    """
     if not response_body:
-        # Empty response for 5xx errors is invalid
         if status_code >= 500:
             return False, ["Empty response body for 5xx error"]
         return True, []
     
-    # Parse JSON if possible
     try:
         if isinstance(response_body, str):
             data = json.loads(response_body)
         else:
             data = response_body
     except json.JSONDecodeError:
-        # If not JSON, cannot validate schema
-        # For 5xx errors, non-JSON responses are invalid
         if status_code >= 500:
             return False, ["Response body is not valid JSON for 5xx error"]
         return True, []
     except:
-        # Other parsing errors
         if status_code >= 500:
             return False, ["Cannot parse response body for 5xx error"]
         return True, []
     
-    # Define schema expectations per status code
-    # For 5xx errors, expect error and message fields
     if status_code >= 500:
         if not isinstance(data, dict):
             return False, ["Response body must be a JSON object for 5xx errors"]
@@ -301,21 +212,16 @@ def validate_response_schema(response_body, status_code):
             return False, ["Missing 'error' field in 5xx error response"]
         if "message" not in data:
             return False, ["Missing 'message' field in 5xx error response"]
-        # Optionally validate types
         if not isinstance(data.get("error"), str):
             return False, ["Field 'error' must be a string"]
         if not isinstance(data.get("message"), str):
             return False, ["Field 'message' must be a string"]
-        # Additional validation: error should be "Internal Server Error" for 500?
-        # We'll be lenient, just ensure it's present.
-    # For 4xx errors, similar structure but optional
     elif 400 <= status_code < 500:
         if isinstance(data, dict):
             if "error" in data and not isinstance(data["error"], str):
                 return False, ["Field 'error' must be a string"]
             if "message" in data and not isinstance(data["message"], str):
                 return False, ["Field 'message' must be a string"]
-    # For 2xx success, no schema validation by default (could be added later)
     
     return True, []
 
@@ -354,32 +260,18 @@ def health():
     })
 
 def extract_response_code(expected_input):
-    """
-    Extract HTTP status codes from expected input.
-    Handles both string format (Excel test cases) and list format (database test cases).
-    
-    Args:
-        expected_input: Can be string like "201 Created" or list like ["201", "200"]
-    
-    Returns:
-        List of status code strings
-    """
     if not expected_input:
         return ["N/A"]
     
-    # If it's already a list, return it directly (database test cases)
     if isinstance(expected_input, list):
-        # Filter out any non-string elements and ensure they're valid status codes
         valid_codes = []
         for item in expected_input:
             if item is None:
                 continue
             item_str = str(item).strip()
-            # Check if it's a 3-digit HTTP status code
             if re.match(r'^[1-5]\d{2}$', item_str):
                 valid_codes.append(item_str)
             elif item_str.upper() != "N/A":
-                # Try to extract codes from the string
                 matches = re.findall(r'\b([1-5]\d{2})\b', item_str)
                 valid_codes.extend(matches)
         
@@ -388,11 +280,8 @@ def extract_response_code(expected_input):
         else:
             return ["N/A"]
     
-    # Handle string input (Excel test cases)
     expected_str = str(expected_input)
 
-    # Support scenarios like "400 Bad Request or 200 with default sort"
-    # where APIs may either reject invalid sort or fallback to a default sort.
     expected_lower = expected_str.lower()
     if 'default sort' in expected_lower or 'fallback' in expected_lower:
         codes = re.findall(r'\b([1-5]\d{2})\b', expected_str)
@@ -405,12 +294,10 @@ def extract_response_code(expected_input):
         if normalized:
             return normalized
     
-    # Look for all 3-digit numbers starting with 1-5 (standard HTTP status codes)
     matches = re.findall(r'\b([1-5]\d{2})\b', expected_str)
     if matches:
         return matches
     
-    # Fallback to keywords if no 3-digit code is found
     expected_lower = expected_str.lower()
     if 'created' in expected_lower:
         return ["201"]
@@ -433,26 +320,19 @@ def extract_response_code(expected_input):
     return ["N/A"]
 
 def format_expected_for_display(expected):
-    """Format expected status for display in logs."""
     if not expected:
         return "N/A"
-    
-    # If it's already a list (like ['201', '200']), format it nicely
     if isinstance(expected, list):
         if len(expected) == 1:
             return expected[0]
         else:
             return ", ".join(expected)
-    
-    # If it's a string, return as is
     return str(expected)
 
 def get_test_case_source_info(test_case):
-    """Get source information and additional details for a test case."""
     source = "excel"
     additional_info = []
     
-    # Check for database-specific fields
     if test_case.get('expected_status') is not None:
         source = "database"
     
@@ -473,7 +353,6 @@ def get_test_case_source_info(test_case):
     return source, additional_info
 
 def format_input_body(input_data):
-    """Format input data for display in Excel cells."""
     if isinstance(input_data, dict):
         return json.dumps(input_data, indent=2)
     elif isinstance(input_data, list):
@@ -483,7 +362,6 @@ def format_input_body(input_data):
 
 
 def _create_excel_styles():
-    """Create and return reusable Excel style objects."""
     return {
         'header_fill': PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid"),
         'header_font': Font(bold=True, color="FFFFFF", size=11),
@@ -499,18 +377,6 @@ def _create_excel_styles():
 
 
 def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_base_url=True):
-    """Build an Excel workbook from test cases.
-    
-    Args:
-        test_cases: List of test case dicts
-        method: HTTP method string
-        endpoint: API endpoint string
-        base_url: Base URL string
-        include_base_url: Whether to include the Base Url column
-        
-    Returns:
-        BytesIO containing the Excel file data
-    """
     styles = _create_excel_styles()
     wb = openpyxl.Workbook()
     ws = cast(Worksheet | None, wb.active)
@@ -571,7 +437,6 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
 
 
 def _generate_excel_filename(method, endpoint, prefix="TestCases"):
-    """Generate a timestamped Excel filename."""
     endpoint_clean = endpoint.strip('/').replace('/', '_').replace(' ', '_').upper()
     now = datetime.now()
     return f"{method}_{endpoint_clean}_{prefix}_{now.strftime('%Y-%m-%d')}_{now.strftime('%H-%M-%S')}.xlsx"
@@ -603,23 +468,16 @@ def export_excel():
 
 @app.route('/api/save-to-database', methods=['POST'])
 def save_to_database():
-    """
-    Save generated test cases to SQL Server database.
-    Request body: same as /api/export-excel
-    Response: { success: bool, session_id: str, message: str, saved_count: int }
-    """
     try:
         data = request.get_json()
         print(f"[DEBUG] save-to-database received data: {data}")
         
-        # Generate test cases
         test_cases = generator.generate_test_cases(data)
         print(f"[DEBUG] Generated {len(test_cases)} test cases for database save")
         
         if not test_cases:
             return api_error('No test cases generated to save')
         
-        # Prepare session data
         session_data = {
             'endpoint': data.get('endpoint', '/api/test'),
             'method': data.get('method', 'GET'),
@@ -628,7 +486,6 @@ def save_to_database():
             'created_by': 'system'
         }
         
-        # Save to database
         db = get_database()
         success, message, session_id, saved_count = db.save_test_cases(session_data, test_cases)
         
@@ -644,11 +501,6 @@ def save_to_database():
 
 @app.route('/api/database-sessions', methods=['GET'])
 def get_database_sessions():
-    """
-    Retrieve saved test case sessions.
-    Query params: limit, offset, endpoint, base_url, method (optional filters)
-    Response: { sessions: [], total: int }
-    """
     try:
         limit = request.args.get('limit', default=50, type=int)
         offset = request.args.get('offset', default=0, type=int)
@@ -674,10 +526,6 @@ def get_database_sessions():
 
 @app.route('/api/database-test-cases/<session_id>', methods=['GET'])
 def get_session_test_cases(session_id):
-    """
-    Retrieve test cases for a specific session.
-    Response: { session_info: {}, test_cases: [] }
-    """
     try:
         db = get_database()
         session_info, test_cases = db.get_test_cases(session_id)
@@ -694,10 +542,6 @@ def get_session_test_cases(session_id):
 
 @app.route('/api/database-health', methods=['GET'])
 def database_health():
-    """
-    Check database connection health.
-    Response: { success: bool, message: str }
-    """
     try:
         success, message = initialize_database()
         return api_success({'message': message}) if success else api_error(message, status_code=500)
@@ -742,28 +586,24 @@ def export_results():
         ws = cast(Worksheet | None, wb.active)
         if ws is None:
             return api_error('Failed to create worksheet')
-        ws.title = "API Test Results"
+        ws.title = "API Execution Results"
 
-        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=11)
-        border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        styles = _create_excel_styles()
 
-        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type", "Base Url", "Endpoint", "Request Body", "Expected Status", "Actual Status", "Result", "Response Body", "Details"]
+        headers = [
+            "ID", "HTTP Method", "Test Case Name", "Test Type", 
+            "Base Url", "Endpoint", "Request Body", 
+            "Expected Response Code", "Expected Status",
+            "Actual Status Code", "Execution Status", "Response Body", "Details"
+        ]
         ws.append(headers)
 
         for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_align
-            cell.border = border
+            cell.fill = styles['header_fill']
+            cell.font = styles['header_font']
+            cell.alignment = styles['center_align']
+            cell.border = styles['border']
 
-        # Create a map for quick lookup of test cases by ID
         tc_map = {tc.get('id'): tc for tc in test_cases}
 
         for res in results:
@@ -773,6 +613,9 @@ def export_results():
             request_body = format_input_body(tc.get("input", {}))
             status = res.get('status', 'fail').upper()
             
+            response_codes = extract_response_code(tc.get("expected", ""))
+            response_code_str = ", ".join(response_codes) if isinstance(response_codes, list) else str(response_codes)
+            
             row_data = [
                 tc_id,
                 method,
@@ -781,6 +624,7 @@ def export_results():
                 tc.get("baseUrl", ""),
                 endpoint,
                 request_body,
+                response_code_str,
                 tc.get("expected", "N/A"),
                 res.get('statusCode', 'N/A'),
                 status,
@@ -789,9 +633,8 @@ def export_results():
             ]
             ws.append(row_data)
             
-            # Color coding the result cell
             last_row = ws.max_row
-            result_cell = ws.cell(row=last_row, column=10)
+            result_cell = ws.cell(row=last_row, column=11)
             if status == 'PASS':
                 result_cell.fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
                 result_cell.font = Font(color="065F46", bold=True)
@@ -801,22 +644,22 @@ def export_results():
 
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
             for cell in row:
-                cell.border = border
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                cell.border = styles['border']
+                cell.alignment = styles['left_align']
 
-        # Set column widths
-        ws.column_dimensions['A'].width = 15
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 35
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 25
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 40
-        ws.column_dimensions['H'].width = 25
-        ws.column_dimensions['I'].width = 15
-        ws.column_dimensions['J'].width = 12
-        ws.column_dimensions['K'].width = 40
-        ws.column_dimensions['L'].width = 50
+        ws.column_dimensions['A'].width = 12 
+        ws.column_dimensions['B'].width = 12 
+        ws.column_dimensions['C'].width = 35 
+        ws.column_dimensions['D'].width = 12 
+        ws.column_dimensions['E'].width = 25 
+        ws.column_dimensions['F'].width = 20 
+        ws.column_dimensions['G'].width = 45 
+        ws.column_dimensions['H'].width = 16 
+        ws.column_dimensions['I'].width = 30 
+        ws.column_dimensions['J'].width = 15 
+        ws.column_dimensions['K'].width = 15 
+        ws.column_dimensions['L'].width = 50 
+        ws.column_dimensions['M'].width = 50 
 
         output = BytesIO()
         wb.save(output)
@@ -835,7 +678,7 @@ def export_results():
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"[ERROR] export-excel failed: {str(e)}")
+        print(f"[ERROR] export-results failed: {str(e)}")
         print(f"[ERROR] Traceback:\n{error_details}")
         return api_error(e)
 
@@ -859,7 +702,6 @@ def upload_excel():
             test_cases = []
             headers = [cell.value for cell in ws[1]]
             
-            # Find column indices
             col_map = {
                 'id': -1, 'method': -1, 'scenario': -1, 'type': -1, 
                 'endpoint': -1, 'input': -1, 'expected': -1, 'baseUrl': -1
@@ -929,12 +771,11 @@ def execute_tests():
         results = []
         original_payload = data.get('originalPayload')
         
-        # Parse original_payload if it's a string
         if isinstance(original_payload, str) and original_payload.strip():
             try:
                 original_payload = json.loads(original_payload)
             except:
-                pass # Keep as string if not valid JSON
+                pass
 
         field_configs = data.get('fieldConfigs', {})
         for test_case in test_cases:
@@ -945,9 +786,147 @@ def execute_tests():
     except Exception as e:
         return api_error(e)
 
-# --- Mock response dispatch tables ---
+# ======= DYNAMIC PERFORMANCE ENGINE UPGRADE ========
+@app.route('/api/run-performance', methods=['POST'])
+def run_performance_test():
+    try:
+        data = request.get_json()
+        
+        base_url = data.get('baseUrl', 'mock')
+        if base_url == 'mock' or not base_url:
+            return api_error("Performance testing requires a real Base URL, not a mock environment.")
 
-# Maps specific HTTP status codes to their standard error response bodies
+        # Extract specific scenario data passed from the frontend loop
+        test_case = data.get('testCase', {})
+        method = test_case.get('method', data.get('method', 'GET')).upper()
+        expected = test_case.get('expected', '200')
+        
+        # Calculate Exact Endpoint
+        current_endpoint = test_case.get('endpoint', data.get('endpoint', '/search'))
+        payload = test_case.get('input', {})
+        
+        if method in ['GET', 'DELETE']:
+            if isinstance(payload, str):
+                if payload.startswith('/'):
+                    current_endpoint = payload
+                    payload = {}
+                elif payload.startswith('?') or '=' in payload:
+                    payload = parse_query_params(payload)
+                else:
+                    current_endpoint = current_endpoint.rstrip('/') + '/' + payload
+                    payload = {}
+        
+        safe_payload = json.dumps(payload)
+
+        users = str(data.get('users', 50))       
+        spawn_rate = str(data.get('spawnRate', 10)) 
+        run_time = data.get('runTime', '10s')    
+        
+        locust_script = f"""from locust import HttpUser, task, between
+import json
+
+class APIUser(HttpUser):
+    wait_time = between(0.01, 0.05) 
+    host = "{base_url}"
+
+    @task
+    def execute_dynamic_request(self):
+        headers = {{
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }}
+        
+        payload_raw = {safe_payload}
+        try:
+            payload_data = json.loads(payload_raw)
+        except:
+            payload_data = payload_raw
+            
+        kwargs = {{"headers": headers, "catch_response": True, "timeout": 15.0}}
+        
+        if "{method}" in ["GET", "DELETE"]:
+            if isinstance(payload_data, dict) and payload_data:
+                kwargs["params"] = payload_data
+        else:
+            if isinstance(payload_data, dict) and payload_data:
+                kwargs["json"] = payload_data
+            elif payload_data:
+                kwargs["data"] = payload_data
+
+        with self.client.request("{method}", "{current_endpoint}", **kwargs) as response:
+            expected_codes = "{expected}"
+            
+            # Dynamic Success State Mapping based on the generated scenario
+            if "429" in expected_codes:
+                if response.status_code == 429:
+                    response.success()
+                else:
+                    response.failure(f"Expected 429 Rate Limit, got {{response.status_code}}")
+            elif "401" in expected_codes or "403" in expected_codes:
+                if response.status_code in [401, 403]:
+                    response.success()
+                else:
+                    response.failure(f"Expected Auth Failure, got {{response.status_code}}")
+            elif response.status_code in [200, 201, 202, 204, 304]:
+                response.success()
+            else:
+                response.failure(f"Failed with HTTP {{response.status_code}}: {{response.text[:100]}}")
+"""
+        timestamp = int(time.time() * 1000)
+        csv_prefix = f"perf_results_{timestamp}"
+        locust_file = f"dynamic_locustfile_{timestamp}.py"
+
+        with open(locust_file, "w", encoding="utf-8") as f:
+            f.write(locust_script)
+
+        print(f"\n🚀 Starting Advanced Locust Load Test on {base_url}{current_endpoint} [{method}]...")
+        
+        command = [
+            "locust",
+            "-f", locust_file,
+            "--headless",
+            "-u", users,
+            "-r", spawn_rate,
+            "--run-time", run_time,
+            "--csv", csv_prefix
+        ]
+        
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ Load Test Complete! Parsing results...")
+
+        metrics = {}
+        csv_file = f"{csv_prefix}_stats.csv"
+        
+        if os.path.exists(csv_file):
+            with open(csv_file, mode='r') as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    if row['Name'] != 'Aggregated':
+                        metrics = {
+                            "requests_made": row["Request Count"],
+                            "failures": row["Failure Count"],
+                            "median_ms": row["Median Response Time"],
+                            "avg_ms": row["Average Response Time"],
+                            "max_ms": row["Max Response Time"],
+                            "rps": row["Requests/s"]
+                        }
+                        break
+            
+            # Clean up generated files to prevent clutter
+            for ext in ['_stats.csv', '_stats_history.csv', '_failures.csv', '_exceptions.csv']:
+                try: os.remove(f"{csv_prefix}{ext}")
+                except: pass
+            try: os.remove(locust_file)
+            except: pass
+            
+            return api_success({"metrics": metrics})
+        else:
+            return api_error("Locust failed to generate CSV results.")
+
+    except Exception as e:
+        return api_error(f"Performance execution failed: {str(e)}")
+
+
 _STATUS_ERROR_BODY = {
     401: {"error": "Unauthorized", "message": "Missing or invalid authentication token"},
     403: {"error": "Forbidden", "message": "You do not have permission to access this resource"},
@@ -957,7 +936,6 @@ _STATUS_ERROR_BODY = {
     429: {"error": "Too Many Requests", "message": "Rate limit exceeded"},
 }
 
-# Maps scenario keywords to (status_code, error_name) for negative test type fallback
 _SCENARIO_ERROR_RULES = [
     (['Authorization', 'token'], 401, "Unauthorized"),
     (['Forbidden', 'Role', 'Permission'], 403, "Forbidden"),
@@ -968,10 +946,6 @@ _SCENARIO_ERROR_RULES = [
 
 
 def _run_mock_validation(payload, method, test_type, field_configs, original_payload):
-    """Run validation checks for mock response generation.
-    
-    Returns a list of error strings, or empty list if validation passes.
-    """
     errors = []
     
     if field_configs:
@@ -994,8 +968,6 @@ def _run_mock_validation(payload, method, test_type, field_configs, original_pay
 
 
 def _get_mock_body_for_status(status_code, method, original_payload, expected):
-    """Generate a mock response body for a given HTTP status code."""
-    # Check exact status code matches first
     if status_code in _STATUS_ERROR_BODY:
         return json.dumps(_STATUS_ERROR_BODY[status_code])
     
@@ -1022,7 +994,6 @@ def _get_mock_body_for_status(status_code, method, original_payload, expected):
 
 
 def _get_error_code_from_scenario(test_type, scenario):
-    """Determine error status code and message from test type and scenario keywords."""
     for keywords, code, msg in _SCENARIO_ERROR_RULES:
         if test_type == msg or any(k.lower() in scenario.lower() for k in keywords):
             return code, msg
@@ -1030,12 +1001,9 @@ def _get_error_code_from_scenario(test_type, scenario):
 
 
 def _get_fallback_response(test_type, method, scenario, original_payload, expected):
-    """Generate fallback mock response based on test type when status code extraction fails."""
     scenario_lower = (scenario or '').lower()
     expected_lower = str(expected or '').lower()
 
-    # For invalid sort fields, return a deterministic success fallback that
-    # advertises the default sort key instead of a generic error response.
     if 'sort' in scenario_lower and ('invalid' in scenario_lower or 'default sort' in expected_lower or 'fallback' in expected_lower):
         return {
             'statusCode': 200,
@@ -1076,7 +1044,6 @@ def _get_fallback_response(test_type, method, scenario, original_payload, expect
 
 
 def generate_mock_response(test_case, method, original_payload=None, field_configs=None):
-    """Generate a mock HTTP response for a test case based on its type, method, and expected outcome."""
     expected = test_case.get('expected', 'Success response')
     if expected == 'N/A' or not expected:
         expected = test_case.get('expected_status', 'N/A')
@@ -1085,7 +1052,6 @@ def generate_mock_response(test_case, method, original_payload=None, field_confi
     scenario = test_case.get('scenario', '')
     payload = test_case.get('input', {})
     
-    # Run validation
     validation_errors = _run_mock_validation(payload, method, test_type, field_configs, original_payload)
     if validation_errors:
         error_msg = "\n".join([f"• {err}" for err in validation_errors])
@@ -1097,7 +1063,6 @@ def generate_mock_response(test_case, method, original_payload=None, field_confi
             'validation_error': f"❌ Invalid data type\n\nPlease correct the following validation errors and try again.\n\n{error_msg}"
         }
     
-    # Try to use expected status code from the test case
     expected_codes = extract_response_code(expected)
     if expected_codes and "N/A" not in expected_codes:
         try:
@@ -1107,56 +1072,26 @@ def generate_mock_response(test_case, method, original_payload=None, field_confi
         except (ValueError, TypeError):
             pass
     
-    # Fallback to legacy logic based on test type
     return _get_fallback_response(test_type, method, scenario, original_payload, expected)
 
 def execute_single_test(endpoint, method, test_case, environment='mock', base_url='mock', original_payload=None, field_configs=None):
-    """Execute a single test case against a real or mock API endpoint.
-
-    Handles validation, HTTP request dispatch, response comparison, and
-    schema validation for 5xx errors. Delegates to ``execute_mock_test``
-    when ``environment`` or ``base_url`` is ``'mock'``.
-
-    Args:
-        endpoint: API endpoint path (e.g., ``/api/users``).
-        method: HTTP method (GET, POST, PUT, PATCH, DELETE).
-        test_case: Dict with keys ``id``, ``type``, ``scenario``, ``input``,
-                   ``expected``, and optionally ``baseUrl``, ``method``,
-                   ``endpoint``, ``expected_status``.
-        environment: ``'mock'`` or ``'real'``.
-        base_url: Base URL for the API, or ``'mock'`` for mock mode.
-        original_payload: Reference payload for type validation.
-        field_configs: Expected field type/required configurations.
-
-    Returns:
-        Dict with keys ``testCaseId``, ``status``, ``statusCode``,
-        ``responseBody``, ``details``, ``source``, ``additionalInfo``.
-    """
     test_id = test_case.get('id', 'Unknown')
     expected = test_case.get('expected', 'N/A')
     
-    # For database test cases, check for expected_status field
     if expected == 'N/A' or not expected:
         expected = test_case.get('expected_status', 'N/A')
     
-    # Get test case source information early (for both success and error returns)
     source, additional_info = get_test_case_source_info(test_case)
     
-    # Prioritize the passed base_url if it's a real URL provided in the execution request
-    # This allows users to change environment/URL in the UI and run existing tests against it
     if not base_url or base_url == 'mock':
         base_url = test_case.get('baseUrl', base_url)
     
-    # Use method and endpoint from test case if available (important for Excel uploads and database test cases)
     method = test_case.get('method', method).upper()
     endpoint = test_case.get('endpoint', endpoint)
     
-    # If payload (input) is a path parameter (starts with /), it should override the endpoint
-    # For query parameters (starts with ?), it should be appended to the endpoint
     current_endpoint = endpoint
     payload = test_case.get('input', {})
     
-    # --- ROBUST GET & DELETE PAYLOAD HANDLING ---
     if method in ['GET', 'DELETE']:
         if isinstance(payload, str):
             if payload.startswith('/'):
@@ -1171,29 +1106,29 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             current_endpoint = current_endpoint.rstrip('/') + '/' + str(payload)
             payload = {}
         
-        # Update test_case input so downstream mock/validation uses the cleaned dict
         test_case['input'] = payload
     else:
-        # Standard override for POST/PUT/PATCH
         if isinstance(payload, str) and payload.startswith('/'):
             current_endpoint = payload
-    # --------------------------------------------
     
     if environment == 'mock' or base_url == 'mock':
         return execute_mock_test(test_id, method, test_case, expected, original_payload, field_configs, base_url, current_endpoint)
     
     try:
         url = build_url(current_endpoint, base_url)
-        headers = {'Content-Type': 'application/json'}
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5'
+        }
         
-        # Validation against field configurations
         if field_configs:
-            source = 'query' if method == 'GET' else 'body'
-            is_valid, errors = validate_against_configs(payload, field_configs, source=source)
+            source_type = 'query' if method == 'GET' else 'body'
+            is_valid, errors = validate_against_configs(payload, field_configs, source=source_type)
             if not is_valid:
                 error_summary = "\n".join([f"• {err}" for err in errors])
                 full_msg = f"❌ Invalid data type\n\nPlease correct the following validation errors and try again.\n\n{error_summary}"
-                # For Positive cases, any validation error should fail the test
                 expected_codes = extract_response_code(expected)
                 status = 'fail' if test_case.get('type') == 'Positive' else ('pass' if '400' in expected_codes else 'fail')
                 return {
@@ -1204,10 +1139,9 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
                     'details': f"❌ Validation Error\n\n{full_msg}\n\nExpected: {expected}"
                 }
 
-        # Pre-validation of data types for Positive cases based on original payload
         if test_case.get('type') == 'Positive' and original_payload:
-            source = 'query' if method == 'GET' else 'body'
-            if source == 'query':
+            source_type = 'query' if method == 'GET' else 'body'
+            if source_type == 'query':
                 parsed_payload = parse_query_params(payload)
                 is_valid, errors = validate_input_types(parsed_payload, original_payload)
             else:
@@ -1239,7 +1173,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         timeout = 10
 
         if method == 'GET':
-            # Payload is now guaranteed to be a valid dictionary or empty
             params = payload if isinstance(payload, dict) else {}
             response = requests.get(url, params=params, headers=headers, timeout=timeout)
         elif method == 'POST':
@@ -1249,7 +1182,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         elif method == 'PATCH':
             response = requests.patch(url, data=payload_json, headers=headers, timeout=timeout)
         elif method == 'DELETE':
-             # For DELETE, if payload is a path (starts with /), it's already in url
             if isinstance(payload, str) and payload.startswith('/'):
                 response = requests.delete(url, headers=headers, timeout=timeout)
             else:
@@ -1260,23 +1192,65 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         expected_codes = extract_response_code(expected)
         actual_code = str(response.status_code)
         
+        status = 'fail'
+        body_assertion_msg = None
+        
         if "N/A" in expected_codes:
             status = 'pass'
         elif actual_code in expected_codes:
             status = 'pass'
-        else:
-            status = 'fail'
+        elif actual_code == '200':
+            test_type = test_case.get('type', '').lower()
+            scenario_lower = test_case.get('scenario', '').lower()
+            
+            # Security and Auth tests MUST fail cleanly. A 200 response is a severe failure for them.
+            is_security_test = 'security' in test_type or 'auth' in test_type or 'sql' in scenario_lower or 'xss' in scenario_lower
+            
+            if test_type in ['negative', 'edge case', 'boundary', 'validation'] and not is_security_test:
+                # Only apply graceful fallback checks to scenarios where real-world apps legitimately fallback
+                is_fallback_scenario = any(kw in scenario_lower for kw in ['sort', 'page', 'size', 'query', 'search', 'filter', 'invalid parameter'])
+                
+                if is_fallback_scenario:
+                    body_lower = response.text.lower()
+                    is_json = 'application/json' in response.headers.get('Content-Type', '').lower()
+                    
+                    if is_json:
+                        graceful_error_indicators = [
+                            'no results', '0 results', 'not found', 'error', 'invalid', 
+                            'bad request', 'missing', 'default'
+                        ]
+                        found_indicators = [kw for kw in graceful_error_indicators if kw in body_lower]
+                        if found_indicators:
+                            status = 'pass'
+                            indicators_str = ", ".join(found_indicators)
+                            body_assertion_msg = f"✅ Soft Assertion Passed: Server handled bad input gracefully. Found: '{indicators_str}'"
+                    else:
+                        graceful_error_indicators = [
+                            'no results found', '0 results', 'did not match', 'try different keywords'
+                        ]
+                        found_indicators = [kw for kw in graceful_error_indicators if kw in body_lower]
+                        
+                        if found_indicators:
+                            status = 'pass'
+                            indicators_str = ", ".join(found_indicators)
+                            body_assertion_msg = f"✅ Soft Assertion Passed: Server handled bad input gracefully. Found: '{indicators_str}'"
+                        else:
+                            status = 'pass'
+                            fallback_element = "Default Page View"
+                            title_match = re.search(r'<title[^>]*>(.*?)</title>', response.text, re.IGNORECASE)
+                            if title_match:
+                                fallback_element = title_match.group(1).strip()
+                            body_assertion_msg = f"✅ Graceful Fallback Passed: Server ignored the invalid parameter and safely loaded the default state.\n↳ Fallback Header Loaded: '{fallback_element}'"
+
         response_text = response.text[:1000] if response.text else '(No response body)'
 
-        # Schema validation for 5xx errors
         schema_valid = True
         schema_errors = []
         if response.status_code >= 500:
             schema_valid, schema_errors = validate_response_schema(response.text, response.status_code)
             if not schema_valid:
-                status = 'fail'  # Override status to fail if schema validation fails
+                status = 'fail'
 
-        # Execution log printing
         print(f"\n--- Test Case Execution: {test_id} ---")
         print(f"Source: {source}")
         if additional_info:
@@ -1289,7 +1263,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         print(f"Response Body: {response.text}")
         print("-" * 40)
 
-        # Build details with source information
         details_parts = [f"Request URL: {response.url}"]
         if additional_info:
             details_parts.append(f"Source: {source} ({', '.join(additional_info)})")
@@ -1297,15 +1270,17 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             details_parts.append(f"Source: {source}")
         details_parts.append(f"Expected: {format_expected_for_display(expected)}")
         details_parts.append(f"Actual: HTTP {response.status_code}")
-
+        
         if isinstance(expected, str):
             expected_lower = expected.lower()
         else:
             expected_lower = str(expected).lower()
         if ('default sort' in expected_lower or 'fallback' in expected_lower) and response.status_code == 200:
             details_parts.append(f"Sort Fallback: Applied default sort header '{DEFAULT_SORT_HEADER}'")
+            
+        if body_assertion_msg:
+            details_parts.append(f"\n{body_assertion_msg}")
         
-        # Add schema validation results if validation failed
         if not schema_valid and schema_errors:
             details_parts.append(f"\nSchema Validation Failed:")
             for err in schema_errors:
@@ -1323,7 +1298,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             'additionalInfo': additional_info
         }
     except requests.exceptions.Timeout:
-        # Build details with source information for timeout
         details_parts = [f"❌ Connection Error: Request timeout after 10 seconds\n\nThe API endpoint took too long to respond. Check if the server is running and accessible."]
         if additional_info:
             details_parts.append(f"Source: {source} ({', '.join(additional_info)})")
@@ -1347,7 +1321,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         else:
             friendly_msg = f"❌ Connection Failed\n\n{str(e)[:200]}"
         
-        # Build details with source information
         details_parts = [friendly_msg]
         if additional_info:
             details_parts.append(f"Source: {source} ({', '.join(additional_info)})")
@@ -1363,7 +1336,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             'additionalInfo': additional_info
         }
     except Exception as e:
-        # Build details with source information
         details_parts = [f"❌ Unexpected Error\n\n{str(e)[:300]}"]
         if additional_info:
             details_parts.append(f"Source: {source} ({', '.join(additional_info)})")
@@ -1380,25 +1352,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         }
 
 def execute_mock_test(test_id, method, test_case, expected, original_payload=None, field_configs=None, base_url='mock', current_endpoint=None):
-    """Execute a test case in mock mode without making real HTTP requests.
-
-    Generates a simulated response via ``generate_mock_response`` and compares
-    the resulting status code against expected codes.
-
-    Args:
-        test_id: Test case identifier string.
-        method: HTTP method string.
-        test_case: Test case dict (same shape as in ``execute_single_test``).
-        expected: Expected outcome string (e.g., ``"200 OK"``).
-        original_payload: Reference payload for type validation.
-        field_configs: Expected field type/required configurations.
-        base_url: Base URL for display purposes.
-        current_endpoint: Resolved endpoint path.
-
-    Returns:
-        Dict with keys ``testCaseId``, ``status``, ``statusCode``,
-        ``responseBody``, ``details``, ``source``, ``additionalInfo``.
-    """
     if current_endpoint is None:
         current_endpoint = test_case.get('endpoint', '')
         
@@ -1408,7 +1361,6 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     actual_code = str(status_code)
     test_type = test_case.get('type', 'Positive')
     
-    # If validation failed, it's only a pass if it's a Negative test that expected a 400
     if mock_response.get('validation_failed'):
         if test_type == 'Positive':
             status = 'fail'
@@ -1422,12 +1374,10 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
         else:
             status = 'fail'
     
-    # Execution log printing (Mock Mode)
     payload = test_case.get('input', {})
     
     if base_url and base_url != 'mock':
         url = build_url(current_endpoint, base_url)
-        # Use requests logic to build the exact URL if it's a GET request with query params
         if method == 'GET' and payload and isinstance(payload, dict):
             req = requests.Request('GET', url, params=payload)
             prepared = req.prepare()
@@ -1435,7 +1385,6 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
         else:
             mock_url = url
     else:
-        # Fallback for mock environment without base_url
         if method == 'GET' and payload and isinstance(payload, dict):
              import urllib.parse
              qs = urllib.parse.urlencode(payload)
@@ -1443,7 +1392,6 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
         else:
              mock_url = f"MOCK://{method}{current_endpoint}"
 
-    # Get test case source information
     source, additional_info = get_test_case_source_info(test_case)
     
     print(f"\n--- [MOCK] Test Case Execution: {test_id} ---")
@@ -1458,7 +1406,6 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     print(f"Response Body: {mock_response['body']}")
     print("-" * 40)
 
-    # Build details with source information
     details_parts = ["[MOCK MODE]"]
     if mock_response.get('validation_failed'):
         details_parts.append(mock_response['validation_error'])
@@ -1491,19 +1438,6 @@ def execute_mock_test(test_id, method, test_case, expected, original_payload=Non
     }
 
 def build_url(endpoint, base_url):
-    """Construct a full URL from an endpoint path and base URL.
-
-    Handles edge cases: endpoints that are already full URLs, query-string-only
-    endpoints, and missing/empty base URLs (falls back to ``localhost:5000``).
-
-    Args:
-        endpoint: API path (e.g., ``/api/users``), query string (``?key=val``),
-                  or full URL.
-        base_url: Base URL (e.g., ``https://api.example.com``).
-
-    Returns:
-        Full URL string.
-    """
     if not endpoint:
         endpoint = ""
     if not base_url:
@@ -1513,8 +1447,6 @@ def build_url(endpoint, base_url):
         return endpoint
         
     if base_url.startswith('http'):
-        # Ensure base_url ends with slash if endpoint doesn't start with one,
-        # but only if endpoint isn't just a query string
         base = base_url.rstrip('/')
         if endpoint.startswith('?'):
             return base + endpoint

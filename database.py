@@ -35,7 +35,7 @@ class TestCaseDatabase:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default database configuration."""
         return {
-            'server': 'LPT2149-B1',
+            'server': 'LPT1671-B1',
             'database': 'TestCasesDB',
             'driver': '{ODBC Driver 17 for SQL Server}',
             'use_windows_auth': True  # Use Windows Authentication
