@@ -1246,7 +1246,7 @@ class GenerateTestcases:
         negative_cases = [
             (f"Invalid {param_name if param_name else 'parameter'} value", f"{param_name if param_name else ''}=invalid_val_@#$%", "400 Bad Request"),
             (f"Duplicate {param_name if param_name else 'parameter'} parameters handling", f"{param_name if param_name else ''}=val1&{param_name if param_name else ''}=val2", "200 OK (first/last used) or 400"),
-            (f"Extremely large query values in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}={'x' * 2000}", "400 Bad Request / 414 URI Too Long"),
+            (f"Extremely large query values in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}={'x' * 2000}", "400 Bad Request / 414 URL Too Long or Fallback to 200 OK"),
             (f"Invalid query param name", "invalid_param=some_value", "200 OK (ignored) or 400")
         ]
         for scenario, inp_param, exp in negative_cases:
