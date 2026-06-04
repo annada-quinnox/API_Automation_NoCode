@@ -238,7 +238,6 @@ def index():
 def generate_test_cases():
     try:
         data = request.get_json()
-        print(f"Received generation request data: {json.dumps(data, indent=2)}")
         test_cases = generator.generate_test_cases(data)
         return api_success({'test_cases': test_cases, 'count': len(test_cases)})
     except Exception as e:
@@ -254,10 +253,7 @@ def get_test_cases():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({
-        'status': 'healthy',
-        'app': 'API Test Case Generator v3'
-    })
+    return jsonify({'status': 'healthy', 'app': 'API Test Case Generator v3'})
 
 def extract_response_code(expected_input):
     if not expected_input:
@@ -299,24 +295,15 @@ def extract_response_code(expected_input):
         return matches
     
     expected_lower = expected_str.lower()
-    if 'created' in expected_lower:
-        return ["201"]
-    if 'no content' in expected_lower:
-        return ["204"]
-    if 'success' in expected_lower or 'ok' in expected_lower:
-        return ["200"]
-    if 'bad request' in expected_lower or 'invalid' in expected_lower or 'missing' in expected_lower:
-        return ["400"]
-    if 'unauthorized' in expected_lower:
-        return ["401"]
-    if 'forbidden' in expected_lower:
-        return ["403"]
-    if 'not found' in expected_lower:
-        return ["404"]
-    if 'conflict' in expected_lower:
-        return ["409"]
-    if 'too many' in expected_lower or 'rate limit' in expected_lower:
-        return ["429"]
+    if 'created' in expected_lower: return ["201"]
+    if 'no content' in expected_lower: return ["204"]
+    if 'success' in expected_lower or 'ok' in expected_lower: return ["200"]
+    if 'bad request' in expected_lower or 'invalid' in expected_lower or 'missing' in expected_lower: return ["400"]
+    if 'unauthorized' in expected_lower: return ["401"]
+    if 'forbidden' in expected_lower: return ["403"]
+    if 'not found' in expected_lower: return ["404"]
+    if 'conflict' in expected_lower: return ["409"]
+    if 'too many' in expected_lower or 'rate limit' in expected_lower: return ["429"]
     return ["N/A"]
 
 def format_expected_for_display(expected):
@@ -360,7 +347,6 @@ def format_input_body(input_data):
     else:
         return str(input_data)
 
-
 def _create_excel_styles():
     return {
         'header_fill': PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid"),
@@ -374,7 +360,6 @@ def _create_excel_styles():
         'center_align': Alignment(horizontal="center", vertical="center", wrap_text=True),
         'left_align': Alignment(horizontal="left", vertical="center", wrap_text=True),
     }
-
 
 def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_base_url=True):
     styles = _create_excel_styles()
@@ -435,21 +420,16 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
     output.seek(0)
     return output
 
-
 def _generate_excel_filename(method, endpoint, prefix="TestCases"):
     endpoint_clean = endpoint.strip('/').replace('/', '_').replace(' ', '_').upper()
     now = datetime.now()
     return f"{method}_{endpoint_clean}_{prefix}_{now.strftime('%Y-%m-%d')}_{now.strftime('%H-%M-%S')}.xlsx"
 
-
 @app.route('/api/export-excel', methods=['POST'])
 def export_excel():
     try:
         data = request.get_json()
-        print(f"[DEBUG] export-excel received data: {data}")
         test_cases = generator.generate_test_cases(data)
-        print(f"[DEBUG] Generated {len(test_cases)} test cases")
-
         method = data.get('method', 'GET')
         endpoint = data.get('endpoint', '/api/test')
         base_url = data.get('baseUrl', data.get('base_url', ''))
@@ -458,9 +438,7 @@ def export_excel():
         filename = _generate_excel_filename(method, endpoint)
 
         return send_file(
-            output,
-            download_name=filename,
-            as_attachment=True,
+            output, download_name=filename, as_attachment=True,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
@@ -470,13 +448,8 @@ def export_excel():
 def save_to_database():
     try:
         data = request.get_json()
-        print(f"[DEBUG] save-to-database received data: {data}")
-        
         test_cases = generator.generate_test_cases(data)
-        print(f"[DEBUG] Generated {len(test_cases)} test cases for database save")
-        
-        if not test_cases:
-            return api_error('No test cases generated to save')
+        if not test_cases: return api_error('No test cases generated to save')
         
         session_data = {
             'endpoint': data.get('endpoint', '/api/test'),
@@ -488,16 +461,10 @@ def save_to_database():
         
         db = get_database()
         success, message, session_id, saved_count = db.save_test_cases(session_data, test_cases)
-        
-        if success:
-            return api_success({'session_id': session_id, 'message': message, 'saved_count': saved_count})
-        else:
-            return api_error(message, status_code=500)
-            
+        if success: return api_success({'session_id': session_id, 'message': message, 'saved_count': saved_count})
+        else: return api_error(message, status_code=500)
     except Exception as e:
-        error_msg = f"Database save error: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        return api_error(error_msg, status_code=500)
+        return api_error(str(e), status_code=500)
 
 @app.route('/api/database-sessions', methods=['GET'])
 def get_database_sessions():
@@ -510,35 +477,22 @@ def get_database_sessions():
         
         db = get_database()
         sessions, total = db.get_sessions(
-            limit=limit,
-            offset=offset,
-            endpoint_filter=endpoint_filter,
-            base_url_filter=base_url_filter,
-            method_filter=method_filter
+            limit=limit, offset=offset, endpoint_filter=endpoint_filter,
+            base_url_filter=base_url_filter, method_filter=method_filter
         )
-        
         return api_success({'sessions': sessions, 'total': total, 'limit': limit, 'offset': offset})
-        
     except Exception as e:
-        error_msg = f"Failed to retrieve sessions: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        return api_error(error_msg, status_code=500)
+        return api_error(str(e), status_code=500)
 
 @app.route('/api/database-test-cases/<session_id>', methods=['GET'])
 def get_session_test_cases(session_id):
     try:
         db = get_database()
         session_info, test_cases = db.get_test_cases(session_id)
-        
-        if session_info is None:
-            return api_error(f"Session {session_id} not found", status_code=404)
-        
+        if session_info is None: return api_error(f"Session {session_id} not found", status_code=404)
         return api_success({'session_info': session_info, 'test_cases': test_cases, 'count': len(test_cases)})
-        
     except Exception as e:
-        error_msg = f"Failed to retrieve test cases: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        return api_error(error_msg, status_code=500)
+        return api_error(str(e), status_code=500)
 
 @app.route('/api/database-health', methods=['GET'])
 def database_health():
@@ -555,18 +509,11 @@ def download_excel():
         test_cases = data.get('test_cases', [])
         endpoint = data.get('endpoint', '/api/test')
         method = data.get('method', 'GET')
-        
-        if not test_cases:
-            return api_error('No test cases provided')
+        if not test_cases: return api_error('No test cases provided')
 
         output = _build_test_case_excel(test_cases, method, endpoint, include_base_url=False)
         filename = _generate_excel_filename(method, endpoint)
-        return send_file(
-            output,
-            download_name=filename,
-            as_attachment=True,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        return send_file(output, download_name=filename, as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except Exception as e:
         return api_error(e)
 
@@ -676,106 +623,26 @@ def export_results():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"[ERROR] export-results failed: {str(e)}")
-        print(f"[ERROR] Traceback:\n{error_details}")
-        return api_error(e)
-
-@app.route('/api/upload-excel', methods=['POST'])
-def upload_excel():
-    try:
-        if 'file' not in request.files:
-            return api_error('No file part')
-        
-        file = request.files['file']
-        filename = file.filename or ''
-        if filename == '':
-            return api_error('No selected file')
-        
-        if file and filename.lower().endswith(('.xlsx', '.xls')):
-            wb = openpyxl.load_workbook(file.stream)
-            ws = cast(Worksheet | None, wb.active)
-            if ws is None:
-                return api_error('Uploaded workbook has no active sheet')
-            
-            test_cases = []
-            headers = [cell.value for cell in ws[1]]
-            
-            col_map = {
-                'id': -1, 'method': -1, 'scenario': -1, 'type': -1, 
-                'endpoint': -1, 'input': -1, 'expected': -1, 'baseUrl': -1
-            }
-            
-            for i, header in enumerate(headers):
-                if not header: continue
-                h = str(header).strip().lower()
-                if 'id' in h: col_map['id'] = i
-                elif 'method' in h: col_map['method'] = i
-                elif 'name' in h or 'scenario' in h: col_map['scenario'] = i
-                elif 'type' in h: col_map['type'] = i
-                elif 'base' in h and 'url' in h: col_map['baseUrl'] = i
-                elif 'endpoint' in h: col_map['endpoint'] = i
-                elif 'body' in h or 'input' in h: col_map['input'] = i
-                elif 'expected status' in h or 'expected response' in h or 'expected' in h: 
-                    if col_map['expected'] == -1 or 'status' in h:
-                        col_map['expected'] = i
-
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                tc = {}
-                if col_map['id'] != -1: tc['id'] = str(row[col_map['id']]) if row[col_map['id']] else f"TC_{len(test_cases)+1}"
-                else: tc['id'] = f"TC_{len(test_cases)+1}"
-                
-                tc['method'] = str(row[col_map['method']]) if col_map['method'] != -1 and row[col_map['method']] else "GET"
-                tc['scenario'] = str(row[col_map['scenario']]) if col_map['scenario'] != -1 and row[col_map['scenario']] else "Test Case"
-                tc['type'] = str(row[col_map['type']]) if col_map['type'] != -1 and row[col_map['type']] else "Positive"
-                tc['endpoint'] = str(row[col_map['endpoint']]) if col_map['endpoint'] != -1 and row[col_map['endpoint']] else "/"
-                tc['baseUrl'] = str(row[col_map['baseUrl']]) if col_map['baseUrl'] != -1 and row[col_map['baseUrl']] else ""
-                
-                input_val = row[col_map['input']] if col_map['input'] != -1 else "{}"
-                try:
-                    if isinstance(input_val, str):
-                        tc['input'] = json.loads(input_val)
-                    else:
-                        tc['input'] = input_val if input_val else {}
-                except:
-                    tc['input'] = input_val if input_val else {}
-                    
-                tc['expected'] = str(row[col_map['expected']]) if col_map['expected'] != -1 and row[col_map['expected']] else "200 OK"
-                
-                test_cases.append(tc)
-
-            return api_success({'test_cases': test_cases, 'count': len(test_cases)})
-        
-        return api_error('Invalid file format')
-    except Exception as e:
         return api_error(e)
 
 @app.route('/api/execute-tests', methods=['POST'])
 def execute_tests():
     try:
         data = request.get_json()
-        print (f"Received test execution request: {json.dumps(data, indent=2)}")
         endpoint = data.get('endpoint', '').strip()
         method = data.get('method', 'GET').upper()
         test_cases = data.get('testCases', [])
         environment = data.get('environment', 'mock')
         base_url = data.get('baseUrl') or data.get('base_url') or 'mock'
 
-        if not endpoint:
-            return api_error('Endpoint is required')
-
-        if not test_cases:
-            return api_error('No test cases provided')
+        if not endpoint: return api_error('Endpoint is required')
+        if not test_cases: return api_error('No test cases provided')
 
         results = []
         original_payload = data.get('originalPayload')
-        
         if isinstance(original_payload, str) and original_payload.strip():
-            try:
-                original_payload = json.loads(original_payload)
-            except:
-                pass
+            try: original_payload = json.loads(original_payload)
+            except: pass
 
         field_configs = data.get('fieldConfigs', {})
         for test_case in test_cases:
@@ -791,32 +658,91 @@ def execute_tests():
 def run_performance_test():
     try:
         data = request.get_json()
-        
         base_url = data.get('baseUrl', 'mock')
         if base_url == 'mock' or not base_url:
             return api_error("Performance testing requires a real Base URL, not a mock environment.")
 
-        # Extract specific scenario data passed from the frontend loop
         test_case = data.get('testCase', {})
         method = test_case.get('method', data.get('method', 'GET')).upper()
         expected = test_case.get('expected', '200')
+        expected_codes = extract_response_code(expected)
         
-        # Calculate Exact Endpoint
         current_endpoint = test_case.get('endpoint', data.get('endpoint', '/search'))
         payload = test_case.get('input', {})
         
         if method in ['GET', 'DELETE']:
             if isinstance(payload, str):
-                if payload.startswith('/'):
-                    current_endpoint = payload
-                    payload = {}
-                elif payload.startswith('?') or '=' in payload:
-                    payload = parse_query_params(payload)
-                else:
-                    current_endpoint = current_endpoint.rstrip('/') + '/' + payload
-                    payload = {}
+                if payload.startswith('/'): current_endpoint = payload; payload = {}
+                elif payload.startswith('?') or '=' in payload: payload = parse_query_params(payload)
+                else: current_endpoint = current_endpoint.rstrip('/') + '/' + payload; payload = {}
         
+        # --- FIX 1: HARDCODED RATE LIMIT ENGINE ---
+        if "429" in expected_codes:
+            requests_made = 0
+            latencies = []
+            got_429 = False
+            sample_output = "No output available"
+            ping_url = build_url(current_endpoint, base_url)
+            headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+            
+            for _ in range(6):
+                start_time = time.time()
+                try:
+                    if method in ["GET", "DELETE"]:
+                        ping_res = requests.request(method, ping_url, params=payload if isinstance(payload, dict) else None, headers=headers, timeout=5.0)
+                    else:
+                        if isinstance(payload, dict) and payload:
+                            ping_res = requests.request(method, ping_url, json=payload, headers=headers, timeout=5.0)
+                        else:
+                            ping_res = requests.request(method, ping_url, data=payload, headers=headers, timeout=5.0)
+                    
+                    requests_made += 1
+                    latencies.append((time.time() - start_time) * 1000)
+                    
+                    if ping_res.status_code == 429:
+                        got_429 = True
+                        sample_output = ping_res.text[:1500]
+                        break
+                    sample_output = ping_res.text[:1500]
+                except Exception as e:
+                    sample_output = str(e)
+
+            metrics = {
+                "requests_made": str(requests_made),
+                "failures": "0" if got_429 else "1",
+                "median_ms": str(round(sum(latencies)/len(latencies))) if latencies else "0",
+                "avg_ms": str(round(sum(latencies)/len(latencies))) if latencies else "0",
+                "max_ms": str(round(max(latencies))) if latencies else "0",
+                "rps": "N/A (Rate Limit Mode)"
+            }
+            
+            failure_details = []
+            if not got_429:
+                failure_details.append("Rate limit of 5 requests per IP was NOT enforced by the server. 6th request succeeded.")
+                
+            return api_success({
+                "metrics": metrics,
+                "sample_output": sample_output,
+                "failure_details": failure_details
+            })
+
+        # --- STANDARD LOCUST LOAD ENGINE ---
         safe_payload = json.dumps(payload)
+        sample_output = "No output available"
+        
+        try:
+            ping_url = build_url(current_endpoint, base_url)
+            headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+            if method in ["GET", "DELETE"]:
+                ping_res = requests.request(method, ping_url, params=payload if isinstance(payload, dict) else None, headers=headers, timeout=5.0)
+            else:
+                if isinstance(payload, dict) and payload:
+                    ping_res = requests.request(method, ping_url, json=payload, headers=headers, timeout=5.0)
+                else:
+                    ping_res = requests.request(method, ping_url, data=payload, headers=headers, timeout=5.0)
+            sample_output = ping_res.text[:1500] 
+        except Exception as e:
+            sample_output = f"Failed to fetch sample: {str(e)}"
 
         users = str(data.get('users', 50))       
         spawn_rate = str(data.get('spawnRate', 10)) 
@@ -856,13 +782,7 @@ class APIUser(HttpUser):
         with self.client.request("{method}", "{current_endpoint}", **kwargs) as response:
             expected_codes = "{expected}"
             
-            # Dynamic Success State Mapping based on the generated scenario
-            if "429" in expected_codes:
-                if response.status_code == 429:
-                    response.success()
-                else:
-                    response.failure(f"Expected 429 Rate Limit, got {{response.status_code}}")
-            elif "401" in expected_codes or "403" in expected_codes:
+            if "401" in expected_codes or "403" in expected_codes:
                 if response.status_code in [401, 403]:
                     response.success()
                 else:
@@ -879,47 +799,72 @@ class APIUser(HttpUser):
         with open(locust_file, "w", encoding="utf-8") as f:
             f.write(locust_script)
 
-        print(f"\n🚀 Starting Advanced Locust Load Test on {base_url}{current_endpoint} [{method}]...")
+        print(f"\n🚀 Starting Locust Load Test on {base_url}{current_endpoint} [{method}]...")
         
         command = [
-            "locust",
-            "-f", locust_file,
-            "--headless",
-            "-u", users,
-            "-r", spawn_rate,
-            "--run-time", run_time,
-            "--csv", csv_prefix
+            "locust", "-f", locust_file, "--headless",
+            "-u", users, "-r", spawn_rate, "--run-time", run_time, "--csv", csv_prefix
         ]
         
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("✅ Load Test Complete! Parsing results...")
 
         metrics = {}
-        csv_file = f"{csv_prefix}_stats.csv"
+        failure_details = []
         
-        if os.path.exists(csv_file):
-            with open(csv_file, mode='r') as file:
+        csv_file_stats = f"{csv_prefix}_stats.csv"
+        csv_file_failures = f"{csv_prefix}_failures.csv"
+        
+        if os.path.exists(csv_file_failures):
+            with open(csv_file_failures, mode='r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
-                    if row['Name'] != 'Aggregated':
+                    err_msg = row.get('Error', '')
+                    occ = row.get('Occurrences', '')
+                    if err_msg:
+                        failure_details.append(f"{err_msg} (Occurred {occ} times)")
+        
+        if os.path.exists(csv_file_stats):
+            time.sleep(0.5)
+            with open(csv_file_stats, mode='r') as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    if row.get('Name') == 'Aggregated':
                         metrics = {
-                            "requests_made": row["Request Count"],
-                            "failures": row["Failure Count"],
-                            "median_ms": row["Median Response Time"],
-                            "avg_ms": row["Average Response Time"],
-                            "max_ms": row["Max Response Time"],
-                            "rps": row["Requests/s"]
+                            "requests_made": row.get("Request Count", "0"),
+                            "failures": row.get("Failure Count", "0"),
+                            "median_ms": row.get("Median Response Time", "0"),
+                            "avg_ms": row.get("Average Response Time", "0"),
+                            "max_ms": row.get("Max Response Time", "0"),
+                            "rps": row.get("Requests/s", "0")
+                        }
+                        break
+                
+                if not metrics: 
+                    file.seek(0)
+                    reader = csv.DictReader(file)
+                    for row in reader:
+                        metrics = {
+                            "requests_made": row.get("Request Count", "0"),
+                            "failures": row.get("Failure Count", "0"),
+                            "median_ms": row.get("Median Response Time", "0"),
+                            "avg_ms": row.get("Average Response Time", "0"),
+                            "max_ms": row.get("Max Response Time", "0"),
+                            "rps": row.get("Requests/s", "0")
                         }
                         break
             
-            # Clean up generated files to prevent clutter
             for ext in ['_stats.csv', '_stats_history.csv', '_failures.csv', '_exceptions.csv']:
                 try: os.remove(f"{csv_prefix}{ext}")
                 except: pass
             try: os.remove(locust_file)
             except: pass
             
-            return api_success({"metrics": metrics})
+            return api_success({
+                "metrics": metrics, 
+                "sample_output": sample_output,
+                "failure_details": failure_details
+            })
         else:
             return api_error("Locust failed to generate CSV results.")
 
@@ -944,7 +889,6 @@ _SCENARIO_ERROR_RULES = [
     (['Content-Type'], 415, "Unsupported Media Type"),
 ]
 
-
 def _run_mock_validation(payload, method, test_type, field_configs, original_payload):
     errors = []
     
@@ -965,7 +909,6 @@ def _run_mock_validation(payload, method, test_type, field_configs, original_pay
             errors = validation_errors
 
     return errors
-
 
 def _get_mock_body_for_status(status_code, method, original_payload, expected):
     if status_code in _STATUS_ERROR_BODY:
@@ -992,13 +935,11 @@ def _get_mock_body_for_status(status_code, method, original_payload, expected):
     
     return json.dumps({"status": "mock_response", "code": status_code})
 
-
 def _get_error_code_from_scenario(test_type, scenario):
     for keywords, code, msg in _SCENARIO_ERROR_RULES:
         if test_type == msg or any(k.lower() in scenario.lower() for k in keywords):
             return code, msg
     return 400, "Bad Request"
-
 
 def _get_fallback_response(test_type, method, scenario, original_payload, expected):
     scenario_lower = (scenario or '').lower()
@@ -1041,7 +982,6 @@ def _get_fallback_response(test_type, method, scenario, original_payload, expect
         'body': json.dumps({"status": "mock_response", "scenario": scenario}),
         'expected': expected
     }
-
 
 def generate_mock_response(test_case, method, original_payload=None, field_configs=None):
     expected = test_case.get('expected', 'Success response')
@@ -1203,11 +1143,9 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             test_type = test_case.get('type', '').lower()
             scenario_lower = test_case.get('scenario', '').lower()
             
-            # Security and Auth tests MUST fail cleanly. A 200 response is a severe failure for them.
             is_security_test = 'security' in test_type or 'auth' in test_type or 'sql' in scenario_lower or 'xss' in scenario_lower
             
             if test_type in ['negative', 'edge case', 'boundary', 'validation'] and not is_security_test:
-                # Only apply graceful fallback checks to scenarios where real-world apps legitimately fallback
                 is_fallback_scenario = any(kw in scenario_lower for kw in ['sort', 'page', 'size', 'query', 'search', 'filter', 'invalid parameter'])
                 
                 if is_fallback_scenario:
