@@ -32,7 +32,6 @@
         .dashboard-header h1 { font-size: 1.875rem; font-weight: 700; color: var(--dark); }
 
         .card { background: white; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 24px; border: 1px solid var(--border); }
-        #config-grid > .card { min-width: 0; }
         .card-title { font-size: 1.125rem; font-weight: 600; margin-bottom: 20px; color: var(--dark); display: flex; align-items: center; gap: 8px; }
 
         /* Summary Stats */
@@ -52,8 +51,8 @@
         .interactive-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: transparent; transition: background 0.3s ease; }
         .interactive-card:hover { border-color: var(--primary-light); transform: translateY(-4px); box-shadow: 0 12px 24px rgba(79, 70, 229, 0.1); }
         .interactive-card:hover::before { background: var(--primary); }
-        .interactive-card h3 { font-size: 1.25rem; color: var(--dark); }
-        .interactive-card p { font-size: 0.9rem; color: var(--gray); max-width: 80%; }
+        .interactive-card h3 { font-size: 1.25rem; color: var(--dark); margin: 0; }
+        .interactive-card p { font-size: 0.9rem; color: var(--gray); max-width: 80%; margin: 0; }
         
         .api-card { padding: 30px 20px; }
         .api-card.disabled { opacity: 0.6; cursor: not-allowed; }
@@ -69,7 +68,7 @@
         input:hover, textarea:hover { border-color: var(--primary-light); box-shadow: 0 4px 10px rgba(79, 70, 229, 0.05); }
         input:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
 
-        /* Custom Elegant Select Styles */
+        /* Custom Select Styles */
         .custom-select { position: relative; width: 100%; }
         .custom-select select { display: none; }
         .select-selected { background-color: white; border: 1px solid var(--border); padding: 12px 40px 12px 18px; border-radius: 24px; font-size: 0.95rem; cursor: pointer; user-select: none; position: relative; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -85,7 +84,6 @@
         .custom-select.force-close .select-selected { border-radius: 24px !important; border-color: var(--border) !important; border-bottom-color: var(--border) !important; }
         .custom-select.force-close .select-selected::after { transform: translateY(-25%) rotate(45deg) !important; border-color: var(--gray) !important; }
         
-        /* Native Suite Selector Styled like Custom Selects */
         #suiteSelector {
             padding: 12px 40px 12px 18px;
             border-radius: 24px;
@@ -115,8 +113,9 @@
         .field-table .select-items div { padding: 8px 12px; font-size: 0.8rem; }
 
         /* Upload Panels */
-        .upload-zone { border: 1px solid var(--border); border-radius: 16px; padding: 32px; text-align: center; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-bottom: 24px; }
+        .upload-zone { border: 1px solid var(--border); border-radius: 16px; padding: 24px; text-align: center; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .upload-zone:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); border-color: var(--primary); }
+        .upload-zone h4 { margin-top: 12px; margin-bottom: 4px; font-size: 1.1rem; color: var(--dark); }
 
         /* Buttons & Badges */
         .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; border-radius: 24px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; border: none; font-size: 0.95rem; }
@@ -154,12 +153,11 @@
         .select-all-pill:hover { border-color: var(--primary-light); background: #f8fafc; color: var(--primary); }
 
         /* Checkboxes & Radios */
-        input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 10px !important; height: 10px !important; padding: 0 !important; border: 1px solid #cbd5e1; border-radius: 3px; outline: none; cursor: pointer; position: relative; background: #f8fafc; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin: 0; display: grid; place-content: center; }
+        input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 14px !important; height: 14px !important; padding: 0 !important; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; cursor: pointer; position: relative; background: #f8fafc; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin: 0; display: grid; place-content: center; }
         input[type="checkbox"]:hover { border-color: var(--primary-light); background: white; box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1); }
-        input[type="checkbox"]::before { content: ""; width: 6px; height: 6px; transform: scale(0); transition: 0.15s transform cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 1em 1em white; background-color: transparent; transform-origin: center; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
+        input[type="checkbox"]::before { content: ""; width: 8px; height: 8px; transform: scale(0); transition: 0.15s transform cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 1em 1em white; background-color: transparent; transform-origin: center; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
         input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
         input[type="checkbox"]:checked::before { transform: scale(1); }
-        .select-all-pill input[type="checkbox"] { margin: 0; width: 10px !important; height: 10px !important; padding: 0 !important; border: 1px solid #cbd5e1; }
         
         .testcase-info { flex: 1; min-width: 0; }
         .tc-id { font-size: 0.7rem; font-weight: 700; color: var(--primary); margin-bottom: 2px; }
@@ -194,11 +192,11 @@
         .modal-content { background: white; border-radius: 20px; width: 90%; max-width: 500px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2); overflow: hidden; transform: scale(0.95); animation: modalIn 0.2s forwards ease-out; max-height: 85vh; display: flex; flex-direction: column; }
         @keyframes modalIn { to { transform: scale(1); } }
         .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-        .modal-header h3 { font-size: 1.25rem; font-weight: 600; color: var(--dark); display: flex; align-items: center; }
+        .modal-header h3 { font-size: 1.25rem; font-weight: 600; color: var(--dark); display: flex; align-items: center; margin: 0; }
         .modal-close { background: none; border: none; font-size: 1.5rem; color: var(--gray); cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; }
         .modal-close:hover { background: #f3f4f6; color: var(--danger); }
         .modal-body { padding: 24px; overflow-y: auto; }
-        .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+        .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
         .modal-btn { display: flex; align-items: center; width: 100%; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: white; cursor: pointer; transition: all 0.2s; text-align: left; }
         .modal-btn:hover { border-color: var(--primary); background: #f9fafb; transform: translateX(4px); }
         .modal-btn-primary { border-color: var(--primary); background: #eff6ff; }
@@ -235,6 +233,9 @@
                     <a href="javascript:void(0)" class="nav-item sub-item" id="nav-test-plan" onclick="navigateTo('test-plan-api-selection', 'nav-test-plan')">
                         <i data-lucide="file-edit"></i> Test Plan
                     </a>
+                    
+                    <div id="dynamic-domain-nav" style="margin-top: 2px; margin-bottom: 8px;"></div>
+                    
                     <a href="javascript:void(0)" class="nav-item sub-item" id="nav-test-lab" onclick="navigateTo('test-lab-view', 'nav-test-lab')">
                         <i data-lucide="beaker"></i> Test Lab
                     </a>
@@ -350,28 +351,56 @@
         </div>
 
         <div id="suiteModal" class="modal" style="display: none;">
-            <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-content" style="max-width: 900px; width: 95%;">
                 <div class="modal-header">
                     <h3><i data-lucide="layers" style="width: 20px; height: 20px; margin-right: 8px; color: var(--primary);"></i> Build Test Suite</h3>
                     <button class="modal-close" onclick="document.getElementById('suiteModal').style.display='none'">&times;</button>
                 </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>Suite Name</label>
-                        <input type="text" id="suiteNameInput" placeholder="e.g. Regression Suite v1">
-                    </div>
-                    <div style="margin-top: 20px;">
-                        <label style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>Select Scenarios for this Suite</span>
-                            <span style="font-size: 0.8rem; font-weight: normal; color: var(--primary); cursor: pointer;" onclick="document.querySelectorAll('.suite-builder-cb').forEach(cb => cb.checked = true)">Select All</span>
-                        </label>
-                        <div id="suiteScenarioList" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #f9fafb;">
+                <div class="modal-body" style="padding: 0;">
+                    <div style="display: flex; height: 500px;">
+                        <div style="width: 300px; border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; background: #f9fafb;">
+                            <h4 style="font-size: 0.85rem; color: var(--gray); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.5px;">Select from Test Plan</h4>
+                            <div id="suiteGroupList" style="display: flex; flex-direction: column; gap: 8px;">
+                                </div>
+                        </div>
+                        <div style="flex: 1; padding: 20px; display: flex; flex-direction: column; overflow: hidden;">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label>Suite Name</label>
+                                <input type="text" id="suiteNameInput" style="font-weight: 600;" readonly>
                             </div>
+                            <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <span style="font-weight: 600; color: var(--dark); font-size: 0.9rem;">Select Scenarios</span>
+                                <label class="select-all-pill">
+                                    <input type="checkbox" id="suiteSelectAllCb" checked> 
+                                    <span>Select All</span>
+                                </label>
+                            </label>
+                            <div id="suiteScenarioList" style="flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff;">
+                                </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn" onclick="document.getElementById('suiteModal').style.display='none'" style="border: 1px solid var(--border); background: white;">Cancel</button>
                     <button class="btn btn-primary" onclick="saveTestSuite()">Save & Load Suite</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewGroupModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3 style="word-break: break-all;"><i data-lucide="box" style="width: 20px; height: 20px; margin-right: 8px; color: var(--primary);"></i> <span id="viewGroupName">Group Name</span></h3>
+                    <button class="modal-close" onclick="document.getElementById('viewGroupModal').style.display='none'">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+                    <div id="viewGroupScenarioList"></div>
+                </div>
+                <div class="modal-footer" style="justify-content: space-between;">
+                    <button class="btn" style="background: #fef2f2; color: var(--danger); border: 1px solid #fca5a5;" id="viewGroupDeleteBtn">
+                        <i data-lucide="trash-2"></i> Delete Group
+                    </button>
+                    <button class="btn btn-primary" onclick="document.getElementById('viewGroupModal').style.display='none'">Close</button>
                 </div>
             </div>
         </div>
@@ -404,15 +433,15 @@
         <div id="test-plan-api-selection" class="view-section" style="display: none;">
             <div class="dashboard-header">
                 <div>
-                    <h1>Select API Protocol</h1>
-                    <p style="color: var(--gray);">Choose the technology stack for your new Test Plan</p>
+                    <h1>Test Plan Builder</h1>
+                    <p style="color: var(--gray);">Choose the technology stack or load existing test cases</p>
                 </div>
                 <button class="btn" onclick="navigateTo('dashboard-main-view', 'nav-dashboard')" style="background: white; border: 1px solid var(--border);">
                     <i data-lucide="arrow-left"></i> Back
                 </button>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
                 <div class="interactive-card api-card" onclick="navigateTo('test-plan-config-view', 'nav-test-plan')">
                     <div style="width: 64px; height: 64px; background: #eef2ff; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
                         <i data-lucide="globe" style="width: 32px; height: 32px; color: var(--primary);"></i>
@@ -422,24 +451,31 @@
                     <button class="btn btn-outline" style="width: 100%; margin-top: auto;">Create Test Case</button>
                 </div>
 
-                <div class="interactive-card api-card disabled" title="Coming Soon">
-                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
-                        <i data-lucide="code" style="width: 32px; height: 32px; color: var(--gray);"></i>
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div class="upload-zone" onclick="document.getElementById('excelFileMain').click()" style="margin: 0; padding: 24px;">
+                        <i data-lucide="file-spreadsheet" style="width: 32px; height: 32px; color: var(--success); margin-bottom: 8px;"></i>
+                        <h4>Import Excel</h4>
+                        <p style="font-size: 0.8rem; color: var(--gray);">Load test cases from spreadsheet into pool</p>
+                        <input type="file" id="excelFileMain" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(this)">
                     </div>
-                    <h3 style="color: var(--gray);">SOAP API</h3>
-                    <p>XML-based web services with strict WSDL validation.</p>
-                    <span class="badge" style="background: #e5e7eb; color: #4b5563; margin-top: auto;">Coming Soon</span>
+
+                    <div class="upload-zone" onclick="showDatabaseSessions()" style="margin: 0; padding: 24px; background: #faf5ff; border-color: #e9d5ff;">
+                        <i data-lucide="database" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 8px;"></i>
+                        <h4>Load from Database</h4>
+                        <p style="font-size: 0.8rem; color: var(--gray);">Import previously saved sessions into pool</p>
+                    </div>
                 </div>
 
-                <div class="interactive-card api-card disabled" title="Coming Soon">
-                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
-                        <i data-lucide="database" style="width: 32px; height: 32px; color: var(--gray);"></i>
-                    </div>
-                    <h3 style="color: var(--gray);">GraphQL</h3>
-                    <p>Query-driven testing for specific data retrieval schemas.</p>
-                    <span class="badge" style="background: #e5e7eb; color: #4b5563; margin-top: auto;">Coming Soon</span>
+                </div>
+
+            <h3 style="margin-top: 40px; margin-bottom: 16px; font-size: 1.25rem; color: var(--dark); font-weight: 700;">Active Test Cases Pool</h3>
+            <div id="pool-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
+                <div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: var(--gray); border: 1px dashed var(--border); border-radius: 16px; background: white;">
+                    <i data-lucide="inbox" style="width: 32px; height: 32px; opacity: 0.5; margin-bottom: 8px;"></i>
+                    <p>No scenarios generated or uploaded yet.</p>
                 </div>
             </div>
+
         </div>
 
 
@@ -462,7 +498,7 @@
             <div class="summary-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 300px));">
                 <div class="summary-card">
                     <div class="summary-icon bg-blue"><i data-lucide="zap"></i></div>
-                    <div class="summary-info"><h3>Generated Scenarios</h3><p id="dash-generated">0</p></div>
+                    <div class="summary-info"><h3>Active API Groups</h3><p id="dash-generated">0</p></div>
                 </div>
             </div>
 
@@ -475,8 +511,7 @@
                             <div class="form-group">
                                 <label>Environment</label>
                                 <select id="environment">
-                                    <option value="mock">🔧 Mock Execution</option>
-                                    <option value="custom">🌐 Custom URL</option>
+                                    <option value="custom" selected>🌐 Custom URL</option>
                                     <option value="dev">💻 Development</option>
                                     <option value="staging">🧪 Staging</option>
                                     <option value="production">🚀 Production</option>
@@ -575,14 +610,14 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-title"><i data-lucide="terminal"></i> Generated TestCase Output</div>
+                    <div class="card-title"><i data-lucide="terminal"></i> Generated TestCase Preview</div>
                     <div id="empty-output" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; color: var(--gray);">
                         <i data-lucide="inbox" style="width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.3;"></i>
                         <p>Configure and generate to see JSON output</p>
                     </div>
                     <div id="outputSection" style="display: none;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <span class="badge badge-info" style="padding: 6px 12px;"><span id="resultCount">0</span> Scenarios Generated</span>
+                            <span class="badge badge-info" style="padding: 6px 12px;"><span id="resultCount">0</span> Generated Now</span>
                             <button class="btn" style="padding: 6px 16px; font-size: 0.8rem; border: 1px solid var(--border); background: white; color: var(--dark);" onclick="copyToClipboard()">
                                 <i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy JSON
                             </button>
@@ -592,7 +627,7 @@
                         <div style="margin-top: 20px; padding: 16px; background: #eef2ff; border: 1px solid var(--primary-light); border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <h4 style="color: var(--primary-dark); margin-bottom: 4px;">Generation Complete!</h4>
-                                <p style="font-size: 0.85rem; color: var(--gray);">Proceed to the Test Lab to build your suite and execute these scenarios.</p>
+                                <p style="font-size: 0.85rem; color: var(--gray);">The scenarios have been added to your pool. Proceed to the Test Lab to build your suite.</p>
                             </div>
                             <button class="btn btn-primary" onclick="navigateTo('test-lab-view', 'nav-test-lab')">
                                 Go to Test Lab <i data-lucide="arrow-right"></i>
@@ -629,7 +664,6 @@
             <div class="card" style="display: flex; justify-content: space-between; align-items: flex-start; background: #f8fafc; gap: 20px;">
                 <div style="flex: 1;">
                     <label style="font-size: 0.85rem; font-weight: 700; color: var(--gray); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;">Active Test Suite</label>
-                    
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <select id="suiteSelector" onchange="loadSelectedSuite()">
                             <option value="">None Selected</option>
@@ -638,17 +672,8 @@
                             <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
                         </button>
                     </div>
-
-                    <p style="font-size: 0.85rem; color: var(--gray); margin-top: 12px;">Select generated scenarios to add to your execution suite.</p>
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; align-items: center;">
-                    <button class="btn" onclick="document.getElementById('excelFileLab').click()" style="background: white; border: 1px solid var(--border);">
-                        <i data-lucide="upload"></i> Upload Excel
-                    </button>
-                    <input type="file" id="excelFileLab" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(this)">
-                    <button class="btn" onclick="showDatabaseSessions()" style="background: white; border: 1px solid var(--border);">
-                        <i data-lucide="database"></i> Load from DB
-                    </button>
                     <button class="btn btn-primary" onclick="openSuiteModal()">
                         <i data-lucide="layers"></i> Create Test Suite
                     </button>
@@ -776,6 +801,15 @@
     </div>
 
     <script>
+        // GLOBAL DATA STRUCTURES
+        // testCasePool holds generated/uploaded cases as groups. Key: "domain_endpoint_METHOD"
+        window.testCasePool = {}; 
+        
+        let activeSuiteCases = [];
+        let savedSuites = []; 
+        let lastResults = [];
+        let lastExecutedTestCases = [];
+
         // GLOBAL TOAST NOTIFICATIONS
         function showToast(msg, type = 'success') {
             let container = document.getElementById('toast-container');
@@ -803,7 +837,134 @@
         function showError(msg) { showToast(msg, 'error'); }
         function showSuccess(msg) { showToast(msg, 'success'); }
 
-        // ROUTER LOGIC
+        // EXTRACT & GROUP LOGIC
+        function extractDomainName(url) {
+            if (!url || url.toLowerCase() === 'mock' || url.toLowerCase() === 'n/a') return 'custom';
+            try {
+                let hostname = new URL(url).hostname;
+                if (hostname.startsWith('www.')) hostname = hostname.substring(4);
+                return hostname.split('.')[0];
+            } catch (e) {
+                let clean = url.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].split('.')[0];
+                return clean || 'custom';
+            }
+        }
+
+        function getGroupKey(tc) {
+            let baseUrl = tc.baseUrl || tc.base_url || 'custom';
+            let domain = extractDomainName(baseUrl);
+            let endpoint = tc.endpoint || '';
+            let cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\//g, '_');
+            if (!cleanEndpoint) cleanEndpoint = 'root';
+            let method = tc.method || 'GET';
+            return `${domain}_${cleanEndpoint}_${method}`;
+        }
+
+        function addToPool(scenarios) {
+            let incomingGroups = {};
+            scenarios.forEach(tc => {
+                let key = getGroupKey(tc);
+                if(!incomingGroups[key]) incomingGroups[key] = [];
+                incomingGroups[key].push(tc);
+            });
+            
+            // Overwrite logic: Replaces old arrays entirely if the key matches exactly
+            for(let key in incomingGroups) {
+                window.testCasePool[key] = incomingGroups[key];
+            }
+            updatePoolUI();
+        }
+
+        function deletePoolGroup(key) {
+            delete window.testCasePool[key];
+            updatePoolUI();
+            showSuccess(`Deleted scenario group: ${key}`);
+            
+            // If the deleted group was being viewed, close the modal
+            if(document.getElementById('viewGroupModal').style.display === 'flex' && document.getElementById('viewGroupName').textContent === key) {
+                document.getElementById('viewGroupModal').style.display = 'none';
+            }
+        }
+
+        // UPDATES SIDEBAR AND MAIN GRID
+        function updatePoolUI() {
+            const keys = Object.keys(window.testCasePool);
+            
+            // Update Metric Counts (Total Active Groups)
+            document.querySelectorAll('#dash-generated').forEach(el => el.textContent = keys.length);
+
+            // Update Sidebar dynamically
+            const navContainer = document.getElementById('dynamic-domain-nav');
+            navContainer.innerHTML = '';
+            keys.forEach(key => {
+                navContainer.innerHTML += `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding-left: 28px; padding-right: 12px; margin-bottom: 2px;" class="nav-item sub-item">
+                        <a href="javascript:void(0)" style="color: var(--primary); text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" onclick="viewPoolGroup('${key}')" title="${key}">
+                            <i data-lucide="box" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;"></i> ${key.split('_')[0]}
+                        </a>
+                        <button onclick="deletePoolGroup('${key}')" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 2px;" title="Delete Group">
+                            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                        </button>
+                    </div>
+                `;
+            });
+
+            // Update Main Grid in API Selection Page
+            const poolContainer = document.getElementById('pool-container');
+            if(poolContainer) {
+                poolContainer.innerHTML = '';
+                if(keys.length === 0) {
+                    poolContainer.innerHTML = `
+                        <div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: var(--gray); border: 1px dashed var(--border); border-radius: 16px; background: white;">
+                            <i data-lucide="inbox" style="width: 32px; height: 32px; opacity: 0.5; margin-bottom: 8px;"></i>
+                            <p>No scenarios generated or uploaded yet.</p>
+                        </div>
+                    `;
+                } else {
+                    keys.forEach(key => {
+                        poolContainer.innerHTML += `
+                            <div class="interactive-card" style="padding: 20px; align-items: flex-start; text-align: left; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                                    <h3 style="font-size: 1rem; color: var(--primary); word-break: break-all; margin-right: 8px; flex:1;">${key}</h3>
+                                    <button onclick="deletePoolGroup('${key}')" style="background: none; border: none; color: var(--danger); cursor: pointer; flex-shrink:0;">
+                                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                                    </button>
+                                </div>
+                                <p style="font-size: 0.8rem; margin: 0;">${window.testCasePool[key].length} Scenarios</p>
+                                <button class="btn btn-outline" style="width: 100%; margin-top: auto; padding: 8px;" onclick="viewPoolGroup('${key}')">View Scenarios</button>
+                            </div>
+                        `;
+                    });
+                }
+            }
+            lucide.createIcons();
+        }
+
+        // VIEW SPECIFIC GROUP SCENARIOS MODAL
+        function viewPoolGroup(key) {
+            const scenarios = window.testCasePool[key];
+            if(!scenarios) return;
+            
+            document.getElementById('viewGroupName').textContent = key;
+            const list = document.getElementById('viewGroupScenarioList');
+            list.innerHTML = '';
+            
+            scenarios.forEach((tc, i) => {
+                list.innerHTML += `
+                    <div style="padding: 10px; border-bottom: 1px solid var(--border); background: #f9fafb; border-radius: 8px; margin-bottom: 8px;">
+                        <div style="font-weight: 600; font-size: 0.85rem;">TC-${tc.test_case_number || tc.id || (i+1)} <span style="color: var(--primary);">[${tc.type || 'Positive'}]</span></div>
+                        <div style="font-size: 0.85rem; color: var(--gray); margin-top: 4px;">${tc.scenario}</div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('viewGroupDeleteBtn').onclick = function() {
+                deletePoolGroup(key);
+            };
+            
+            document.getElementById('viewGroupModal').style.display = 'flex';
+        }
+
         function navigateTo(viewId, navId) {
             document.querySelectorAll('.view-section').forEach(view => view.style.display = 'none');
             document.getElementById(viewId).style.display = 'block';
@@ -875,8 +1036,6 @@
             document.getElementById('add-perf-btn').style.display = 'inline-flex';
         }
 
-
-        // Initialize Custom Select logic
         function initializeCustomSelect(selectElement) {
             if (selectElement.nextElementSibling && selectElement.nextElementSibling.classList.contains('select-selected')) return;
             const wrapper = document.createElement("DIV");
@@ -916,7 +1075,6 @@
             });
         }
 
-        // We explicitly ignore the suiteSelector so it stays native and updates flawlessly
         function initAllCustomSelects() { 
             document.querySelectorAll("select:not(#suiteSelector)").forEach(sel => initializeCustomSelect(sel)); 
         }
@@ -927,21 +1085,11 @@
         const resultCount = document.getElementById('resultCount');
         const payloadInput = document.getElementById('payload');
         const payloadValidation = document.getElementById('payloadValidation');
-        
-        let currentTestCases = [];
-        let activeSuiteCases = [];
-        let savedSuites = []; // Holds multiple in-memory suites for the session
-        
-        let currentEndpoint = '';
-        let currentMethod = '';
-        let currentEnvironment = 'mock';
-        let lastResults = [];
-        let lastExecutedTestCases = [];
 
         lucide.createIcons();
         document.addEventListener("DOMContentLoaded", initAllCustomSelects);
 
-        const environmentUrls = { dev: 'https://api-dev.example.com', staging: 'https://api-staging.example.com', production: 'https://api.example.com' };
+        const environmentUrls = { custom: '', dev: 'https://api-dev.example.com', staging: 'https://api-staging.example.com', production: 'https://api.example.com' };
 
         document.getElementById('method').addEventListener('change', (e) => {
             const val = e.target.value;
@@ -954,8 +1102,8 @@
         });
 
         document.getElementById('environment').addEventListener('change', (e) => {
-            currentEnvironment = e.target.value;
-            document.getElementById('customUrlGroup').style.display = (e.target.value === 'custom' || e.target.value === 'mock') ? 'block' : 'none';
+            let currentEnvironment = e.target.value;
+            document.getElementById('customUrlGroup').style.display = (currentEnvironment === 'custom') ? 'block' : 'none';
         });
 
         document.querySelectorAll('input[name="param_type"]').forEach(radio => {
@@ -1067,19 +1215,26 @@
                 const response = await fetch('/api/upload-excel', { method: 'POST', body: formData });
                 const data = await response.json();
                 if (data.success) {
-                    currentTestCases = data.test_cases;
-                    currentEndpoint = 'Uploaded File';
-                    currentMethod = 'Various';
-                    showSuccess(`Loaded ${data.test_cases.length} cases from ${input.files[0].name}`);
-                    
-                    if (document.getElementById('dash-generated')) {
-                        document.getElementById('dash-generated').textContent = data.test_cases.length;
-                    }
-                    
-                    setTimeout(openSuiteModal, 500);
+                    addToPool(data.test_cases);
+                    showSuccess(`Loaded ${data.test_cases.length} cases from ${input.files[0].name}. Available in Create Suite.`);
                 } else showError(data.error);
             } catch (e) { showError('Upload failed'); }
             finally { input.value = ''; lucide.createIcons(); }
+        }
+
+        async function loadSessionTestCases(sessionId) {
+            try {
+                showSuccess(`Loading test cases from session ${sessionId}...`);
+                const res = await fetch(`/api/database-test-cases/${sessionId}`);
+                if (!res.ok) throw new Error(`Failed to load test cases: ${res.status}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message || 'Failed to load test cases');
+                
+                const testCases = data.test_cases || [];
+                addToPool(testCases);
+                hideDatabaseModal();
+                showSuccess(`Loaded ${testCases.length} test cases into the Test Plan pool.`);
+            } catch (error) { showError(`Failed to load test cases: ${error.message}`); }
         }
 
         form.addEventListener('submit', async (e) => {
@@ -1118,6 +1273,9 @@
                     if(typeSelect && requiredSelect) fieldConfigs[field] = { type: typeSelect.value, required: requiredSelect.value === 'required' };
                 });
 
+                let envSelection = document.getElementById('environment').value;
+                let envUrl = (envSelection === 'custom') ? document.getElementById('customUrl').value : environmentUrls[envSelection];
+
                 for (const m of methods) {
                     const res = await fetch('/api/generate', {
                         method: 'POST',
@@ -1126,50 +1284,32 @@
                             endpoint, method: m, payload: payloadInput.value,
                             field_name: document.getElementById('field-name').value, search_string: document.getElementById('search-txt').value,
                             field_configs: fieldConfigs,
-                            baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock') ? document.getElementById('customUrl').value : environmentUrls[currentEnvironment],
+                            baseUrl: envUrl,
                             param_type: paramType,
                             perf_configs: perfConfigs
                         })
                     });
                     const data = await res.json();
-                    if (data.success) allCases = allCases.concat(data.test_cases);
+                    if (data.success) {
+                        data.test_cases.forEach(tc => {
+                            if (!tc.baseUrl && !tc.base_url) tc.baseUrl = envUrl;
+                        });
+                        allCases = allCases.concat(data.test_cases);
+                    }
                     else { hasError = true; errMsg = data.error || "Unknown error."; }
                 }
                 
                 if (allCases.length > 0) {
-                    displayResults(allCases, endpoint, method);
-                    if (document.getElementById('dash-generated')) {
-                        document.getElementById('dash-generated').textContent = allCases.length;
-                    }
-                    showSuccess(`Successfully generated ${allCases.length} scenarios. Proceed to Test Lab.`);
+                    addToPool(allCases);
+                    displayResultsPreview(allCases, endpoint, method); 
+                    showSuccess(`Successfully generated ${allCases.length} scenarios. Added to Test Plan pool.`);
                 } else if (hasError) showError(`Generation failed: ${errMsg}`);
 
             } catch (err) { showError('Generation failed: ' + err.message); }
             finally { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-lucide="play-circle"></i> Generate Scenarios'; lucide.createIcons(); }
         });
 
-        function displayResults(testCases, endpoint, method) {
-            currentTestCases = testCases;
-            currentEndpoint = endpoint;
-            currentMethod = method;
-            
-            if (endpoint) document.getElementById('endpoint').value = endpoint;
-            if (method && method !== 'Various' && method !== 'All') {
-                const methodSelect = document.getElementById('method');
-                methodSelect.value = method;
-                methodSelect.dispatchEvent(new Event('change'));
-            }
-            
-            if (testCases.length > 0 && testCases[0].input) {
-                let tcPayload = testCases[0].input;
-                if (typeof tcPayload !== 'string') tcPayload = JSON.stringify(tcPayload, null, 2);
-                const currentVal = payloadInput.value.trim();
-                if (!currentVal || currentVal.length < tcPayload.length) {
-                    payloadInput.value = tcPayload;
-                    try { analyzePayload(JSON.parse(tcPayload)); } catch(e) {}
-                }
-            }
-            
+        function displayResultsPreview(testCases, endpoint, method) {
             outputEl.textContent = JSON.stringify({ endpoint, method, count: testCases.length, testCases }, null, 2);
             resultCount.textContent = testCases.length;
             document.getElementById('empty-output').style.display = 'none';
@@ -1177,30 +1317,83 @@
         }
 
         // ==============================================
-        // IN-MEMORY SUITE MANAGEMENT LOGIC
+        // SUITE BUILDER (Two-Pane Layout)
         // ==============================================
+        
+        // Sync Suite Builder Master Checkbox
+        document.getElementById('suiteSelectAllCb').addEventListener('change', function(e) {
+            document.querySelectorAll('.suite-builder-cb').forEach(cb => cb.checked = e.target.checked);
+        });
+
         function openSuiteModal() {
-            if (!currentTestCases || currentTestCases.length === 0) {
-                showError("No generated scenarios found. Please generate them in the Test Plan or load an Excel/DB file first.");
+            const keys = Object.keys(window.testCasePool);
+            if (keys.length === 0) {
+                showError("No scenarios available. Please generate or load cases in the Test Plan first.");
                 return;
             }
+            
+            const groupList = document.getElementById('suiteGroupList');
+            groupList.innerHTML = '';
+            
+            let firstKey = null;
+            keys.forEach(key => {
+                if (!firstKey) firstKey = key;
+                let btn = document.createElement('div');
+                btn.className = 'group-btn';
+                btn.style = "padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; background: white; color: var(--dark); transition: all 0.2s; word-break: break-all; margin-bottom: 8px;";
+                btn.innerText = key;
+                
+                btn.onclick = function() {
+                    document.querySelectorAll('.group-btn').forEach(b => {
+                        b.style.borderColor = 'var(--border)';
+                        b.style.background = 'white';
+                        b.style.color = 'var(--dark)';
+                    });
+                    this.style.borderColor = 'var(--primary)';
+                    this.style.background = '#eef2ff';
+                    this.style.color = 'var(--primary)';
+                    renderGroupScenarios(key);
+                };
+                groupList.appendChild(btn);
+            });
+            
+            document.getElementById('suiteModal').style.display = 'flex';
+            
+            if (firstKey) {
+                groupList.firstChild.click();
+            }
+        }
+
+        function renderGroupScenarios(key) {
+            document.getElementById('suiteNameInput').value = key;
             const list = document.getElementById('suiteScenarioList');
             list.innerHTML = '';
             
-            currentTestCases.forEach((tc, i) => {
+            window.testCasePool[key].forEach((tc, i) => {
                 list.innerHTML += `
-                    <label style="display:flex; align-items:flex-start; gap:12px; padding:10px; border-bottom:1px solid var(--border); cursor:pointer; background: white; border-radius: 8px; margin-bottom: 8px;">
-                        <input type="checkbox" class="suite-builder-cb" data-index="${i}" checked style="margin-top: 2px;">
+                    <label style="display:flex; align-items:flex-start; gap:12px; padding:10px; border-bottom:1px solid var(--border); cursor:pointer; background: white; border-radius: 8px; margin-bottom: 8px; transition: background 0.2s;">
+                        <input type="checkbox" class="suite-builder-cb" data-key="${key}" data-index="${i}" checked style="margin-top: 2px;">
                         <div style="flex: 1;">
-                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--dark);">TC-${tc.test_case_number || i + 1} <span style="color: var(--primary); margin-left: 8px;">[${tc.type}]</span></div>
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--dark);">TC-${tc.test_case_number || tc.id || (i + 1)} <span style="color: var(--primary); margin-left: 8px;">[${tc.type}]</span></div>
                             <div style="font-size: 0.85rem; color: var(--gray); margin-top: 2px;">${tc.scenario}</div>
                         </div>
                     </label>
                 `;
             });
+
+            // Re-sync individual checkboxes back to the master checkbox
+            list.addEventListener('change', function(e) {
+                if(e.target && e.target.classList.contains('suite-builder-cb')) {
+                    const all = list.querySelectorAll('.suite-builder-cb').length;
+                    const checkedCount = list.querySelectorAll('.suite-builder-cb:checked').length;
+                    const selectAll = document.getElementById('suiteSelectAllCb');
+                    selectAll.checked = (all === checkedCount && all > 0);
+                    selectAll.indeterminate = (checkedCount > 0 && checkedCount < all);
+                }
+            });
             
-            document.getElementById('suiteNameInput').value = `Regression Suite - ${new Date().toLocaleString()}`;
-            document.getElementById('suiteModal').style.display = 'flex';
+            document.getElementById('suiteSelectAllCb').checked = true;
+            document.getElementById('suiteSelectAllCb').indeterminate = false;
         }
 
         function saveTestSuite() {
@@ -1211,7 +1404,11 @@
             }
             
             const suiteName = document.getElementById('suiteNameInput').value || 'Unnamed Suite';
-            const newSuiteCases = Array.from(checked).map(cb => currentTestCases[cb.dataset.index]);
+            const newSuiteCases = Array.from(checked).map(cb => {
+                const key = cb.getAttribute('data-key');
+                const idx = parseInt(cb.getAttribute('data-index'));
+                return window.testCasePool[key][idx];
+            });
             
             const suiteId = Date.now().toString();
             savedSuites.push({ id: suiteId, name: suiteName, cases: newSuiteCases });
@@ -1256,14 +1453,10 @@
             const suiteId = selector.value;
             if (!suiteId) return;
 
-            // Remove from memory
             savedSuites = savedSuites.filter(s => s.id !== suiteId);
-
-            // Remove option from dropdown
             const optionToRemove = selector.querySelector(`option[value="${suiteId}"]`);
             if (optionToRemove) optionToRemove.remove();
 
-            // Reset and reload
             selector.value = "";
             loadSelectedSuite();
             showSuccess("Test suite deleted successfully.");
@@ -1326,7 +1519,7 @@
                     <div style="display: flex; align-items: center; width: 100%; gap: 12px;">
                         <div class="checkbox-col"><input type="checkbox" class="test-case-checkbox" data-index="${i}" checked></div>
                         <div class="testcase-info">
-                            <div class="tc-id">TC-${tc.test_case_number || tc.id}</div>
+                            <div class="tc-id">TC-${tc.test_case_number || tc.id || (i + 1)}</div>
                             <div class="tc-scenario">${tc.scenario || 'Test Scenario'}</div>
                             ${perfInputs}
                         </div>
@@ -1398,14 +1591,6 @@
             
             if (!selected.length) { showError('Select at least one functional scenario'); return; }
 
-            const fieldConfigs = {};
-            document.querySelectorAll('#fieldTableBody tr').forEach(row => {
-                const field = row.cells[0].textContent;
-                const typeSelect = row.querySelector('.type-select');
-                const requiredSelect = row.querySelector('.required-select');
-                if(typeSelect && requiredSelect) fieldConfigs[field] = { type: typeSelect.value, required: requiredSelect.value === 'required' };
-            });
-
             const btn = document.getElementById('executeBtn');
             const original = btn.innerHTML;
             btn.disabled = true;
@@ -1413,15 +1598,14 @@
 
             const start = performance.now();
             try {
-                // BULLETPROOF ENDPOINT AND URL PARSING
-                let activeEndpoint = currentEndpoint || document.getElementById('endpoint').value.trim() || '/';
-                let activeMethod = currentMethod || document.getElementById('method').value || 'GET';
-                let activeEnv = currentEnvironment || 'mock';
-                let baseUrl = (activeEnv === 'mock' || activeEnv === 'custom') ? (document.getElementById('customUrl').value || 'mock') : environmentUrls[activeEnv];
+                let activeEndpoint = selected[0].endpoint || '/';
+                let activeMethod = selected[0].method || 'GET';
+                let baseUrl = selected[0].baseUrl || selected[0].base_url || 'custom';
+                if (baseUrl === 'N/A' || baseUrl === 'No-Base-URL') baseUrl = 'custom';
                 
                 const res = await fetch('/api/execute-tests', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint: activeEndpoint, method: activeMethod, testCases: selected, environment: activeEnv, baseUrl, originalPayload: payloadInput.value, fieldConfigs: fieldConfigs })
+                    body: JSON.stringify({ endpoint: activeEndpoint, method: activeMethod, testCases: selected, environment: 'custom', baseUrl, originalPayload: null, fieldConfigs: {} })
                 });
                 
                 const latency = Math.round(performance.now() - start);
@@ -1479,7 +1663,7 @@
                 if (!cleanEndpoint.startsWith('/')) cleanEndpoint = '/' + cleanEndpoint;
                 let displayUrl = cleanBase + cleanEndpoint;
 
-                addToHistory({ type: 'Functional', endpoint: displayUrl, method: activeMethod, environment: activeEnv, total: data.results.length, passed: passed, latency: latency, date: new Date().toLocaleTimeString() });
+                addToHistory({ type: 'Functional', endpoint: displayUrl, method: activeMethod, environment: 'custom', total: data.results.length, passed: passed, latency: latency, date: new Date().toLocaleTimeString() });
                 
             } catch (e) { showError(`Execution failed: ${e.message}`); }
             finally { btn.disabled = false; btn.innerHTML = original; lucide.createIcons(); }
@@ -1535,16 +1719,6 @@
 
             if (!selected.length) { showError("Select at least one performance scenario"); return; }
 
-            let activeEndpoint = currentEndpoint || document.getElementById('endpoint').value.trim() || '/';
-            let activeMethod = currentMethod || document.getElementById('method').value || 'GET';
-            let activeEnv = currentEnvironment || 'mock';
-            let baseUrl = (activeEnv === 'mock' || activeEnv === 'custom') ? (document.getElementById('customUrl').value || 'mock') : environmentUrls[activeEnv];
-
-            if (!activeEndpoint || !baseUrl || baseUrl === 'mock') {
-                showError("Please configure a real Base URL (Custom, Dev, Staging, or Prod). Locust cannot attack a mock environment.");
-                return;
-            }
-
             const btn = document.getElementById('runPerfBtn');
             const originalHtml = btn.innerHTML;
             btn.disabled = true;
@@ -1570,6 +1744,16 @@
                 const users = row.querySelector('.perf-u') ? row.querySelector('.perf-u').value : '50';
                 const spawnRate = row.querySelector('.perf-r') ? row.querySelector('.perf-r').value : '10';
                 const runTime = row.querySelector('.perf-t') ? row.querySelector('.perf-t').value : '10s';
+
+                let activeEndpoint = tc.endpoint || '/';
+                let activeMethod = tc.method || 'GET';
+                let baseUrl = tc.baseUrl || tc.base_url || 'custom';
+                if (baseUrl === 'N/A' || baseUrl === 'No-Base-URL') baseUrl = 'custom';
+
+                if (baseUrl === 'custom' || baseUrl === 'mock') {
+                    showError(`Scenario TC-${tc.test_case_number || tc.id} lacks a valid Base URL. Locust cannot attack a mock environment.`);
+                    continue;
+                }
 
                 try {
                     const res = await fetch('/api/run-performance', {
@@ -1612,7 +1796,7 @@
                     item.style.borderLeft = `4px solid ${isPass ? 'var(--success)' : 'var(--danger)'}`;
 
                     let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-                    let tcEndpoint = tc.endpoint || activeEndpoint;
+                    let tcEndpoint = activeEndpoint;
                     if (!tcEndpoint.startsWith('/')) tcEndpoint = '/' + tcEndpoint;
                     let displayUrl = cleanBase + tcEndpoint;
 
@@ -1623,7 +1807,7 @@
                     if (failCount > 0 && failureDetails.length > 0) failureText = `\n\n❌ Failure Reasons:\n• ` + failureDetails.join(`\n• `);
                     else if (failCount > 0) failureText = `\n\n❌ Failure Reasons:\n• Unknown timeouts or connection resets occurred during the load test.`;
 
-                    const details = `🚀 Load Test Execution Complete\nTarget: ${displayUrl} [${tc.method || activeMethod}]\nScenario: ${tc.scenario}\nConfiguration: ${users} Users | Spawn: ${spawnRate}/sec | Duration: ${runTime}\n\nMetrics:\n• Total Requests: ${reqMade}\n• Failures: ${failCount}\n• Average Latency: ${avgMs} ms\n• Max Latency: ${maxMs} ms\n• Throughput: ${rps} req/sec${failureText}\n\nActual Output (Sample Response):\n${sampleOutput}`;
+                    const details = `🚀 Load Test Execution Complete\nTarget: ${displayUrl} [${activeMethod}]\nScenario: ${tc.scenario}\nConfiguration: ${users} Users | Spawn: ${spawnRate}/sec | Duration: ${runTime}\n\nMetrics:\n• Total Requests: ${reqMade}\n• Failures: ${failCount}\n• Average Latency: ${avgMs} ms\n• Max Latency: ${maxMs} ms\n• Throughput: ${rps} req/sec${failureText}\n\nActual Output (Sample Response):\n${sampleOutput}`;
 
                     item.innerHTML = `
                         <div class="result-header">
@@ -1647,7 +1831,6 @@
                 }
             }
 
-            // Update UI Stats for Performance
             if (document.getElementById('dash-failures')) document.getElementById('dash-failures').textContent = totalFails;
             if (document.getElementById('dash-success')) {
                 const sr = totalReqs > 0 ? Math.round(((totalReqs - totalFails) / totalReqs) * 100) : 0;
@@ -1799,63 +1982,6 @@
                 sessionsListEl.innerHTML = `<div style="text-align: center; padding: 40px 0; color: var(--danger);"><i data-lucide="alert-circle" style="width: 48px; height: 48px; margin-bottom: 12px;"></i><br><strong>Error loading sessions:</strong><br>${error.message}</div>`;
                 lucide.createIcons();
             } finally { loadingEl.style.display = 'none'; }
-        }
-
-        async function loadSessionTestCases(sessionId) {
-            try {
-                showSuccess(`Loading test cases from session ${sessionId}...`);
-                const res = await fetch(`/api/database-test-cases/${sessionId}`);
-                if (!res.ok) throw new Error(`Failed to load test cases: ${res.status}`);
-                const data = await res.json();
-                if (!data.success) throw new Error(data.message || 'Failed to load test cases');
-                
-                const sessionInfo = data.session_info;
-                const testCases = data.test_cases || [];
-                
-                if (sessionInfo.endpoint) document.getElementById('endpoint').value = sessionInfo.endpoint;
-                if (sessionInfo.method) {
-                    const mSelect = document.getElementById('method');
-                    mSelect.value = sessionInfo.method;
-                    mSelect.dispatchEvent(new Event('change'));
-                }
-                
-                if (sessionInfo.base_url) {
-                    const envSelect = document.getElementById('environment');
-                    let foundEnv = false;
-                    for (const option of envSelect.options) {
-                        if (option.value === 'custom' || option.value === 'mock') continue;
-                        if (environmentUrls[option.value] === sessionInfo.base_url) {
-                            envSelect.value = option.value; envSelect.dispatchEvent(new Event('change')); foundEnv = true; break;
-                        }
-                    }
-                    if (!foundEnv) { envSelect.value = 'custom'; envSelect.dispatchEvent(new Event('change')); document.getElementById('customUrl').value = sessionInfo.base_url; }
-                }
-                
-                currentTestCases = testCases;
-                currentEndpoint = sessionInfo.endpoint || '';
-                currentMethod = sessionInfo.method || '';
-                
-                if (testCases.length > 0) {
-                    const testCaseWithInput = testCases.find(tc => tc.input && Object.keys(tc.input).length > 0);
-                    if (testCaseWithInput && testCaseWithInput.input) {
-                        let inputData = testCaseWithInput.input;
-                        if (typeof inputData !== 'string') inputData = JSON.stringify(inputData, null, 2);
-                        document.getElementById('payload').value = inputData;
-                        try { analyzePayload(typeof inputData === 'string' ? JSON.parse(inputData) : inputData); } catch(e) {}
-                    }
-                }
-                
-                // Clear active suite when loading a new session from DB
-                activeSuiteCases = [];
-                document.getElementById('testCasesWrapper').style.display = 'none';
-                document.getElementById('testLabEmptyState').style.display = 'block';
-                document.getElementById('suiteSelector').value = "";
-                if (document.getElementById('deleteSuiteBtn')) document.getElementById('deleteSuiteBtn').style.display = 'none';
-                
-                displayResults(testCases, sessionInfo.endpoint, sessionInfo.method);
-                hideDatabaseModal();
-                showSuccess(`Loaded ${testCases.length} test cases. Proceed to Test Lab to execute.`);
-            } catch (error) { showError(`Failed to load test cases: ${error.message}`); }
         }
     </script>
 </body>
