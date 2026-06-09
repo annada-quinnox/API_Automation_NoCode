@@ -425,6 +425,109 @@ def _generate_excel_filename(method, endpoint, prefix="TestCases"):
     now = datetime.now()
     return f"{method}_{endpoint_clean}_{prefix}_{now.strftime('%Y-%m-%d')}_{now.strftime('%H-%M-%S')}.xlsx"
 
+def _normalize_excel_header(header):
+    if header is None:
+        return ""
+    return re.sub(r'[^a-z0-9]+', '_', str(header).strip().lower()).strip('_')
+
+def _parse_excel_input_cell(value):
+    if value is None:
+        return {}
+
+    if isinstance(value, (dict, list, int, float, bool)):
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return {}
+
+    try:
+        return json.loads(text)
+    except Exception:
+        return text
+
+def _build_test_case_from_excel_row(row_data, index):
+    method = str(row_data.get('http_method') or row_data.get('method') or 'GET').strip().upper()
+    endpoint = str(row_data.get('endpoint') or '/api/test').strip() or '/api/test'
+    base_url = str(row_data.get('base_url') or row_data.get('baseurl') or '').strip()
+    scenario = str(row_data.get('test_case_name') or row_data.get('scenario') or f'Imported Test Case {index}').strip()
+    test_type = str(row_data.get('test_type') or row_data.get('type') or 'Positive').strip() or 'Positive'
+    expected = str(
+        row_data.get('expected_status')
+        or row_data.get('expected_response')
+        or row_data.get('expected_response_code')
+        or row_data.get('expected')
+        or 'N/A'
+    ).strip()
+
+    input_body = _parse_excel_input_cell(
+        row_data.get('request_body')
+        or row_data.get('input_body')
+        or row_data.get('input')
+        or row_data.get('payload')
+    )
+
+    test_case_id = row_data.get('id') or row_data.get('test_case_id') or f'IMP_{index:03d}'
+    test_case_id = str(test_case_id).strip() if test_case_id is not None else f'IMP_{index:03d}'
+
+    return {
+        'id': test_case_id,
+        'test_case_number': index,
+        'type': test_type,
+        'scenario': scenario,
+        'input': input_body,
+        'expected': expected,
+        'expected_status': extract_response_code(expected),
+        'baseUrl': base_url,
+        'endpoint': endpoint,
+        'method': method
+    }
+
+@app.route('/api/upload-excel', methods=['POST'])
+def upload_excel():
+    try:
+        uploaded_file = request.files.get('file')
+        if uploaded_file is None or not uploaded_file.filename:
+            return api_error('No Excel file was uploaded')
+
+        filename = uploaded_file.filename
+        if not filename.lower().endswith('.xlsx'):
+            return api_error('Unsupported file format. Please upload an .xlsx file')
+
+        workbook = openpyxl.load_workbook(uploaded_file, data_only=True)
+        ws = cast(Worksheet | None, workbook.active)
+        if ws is None:
+            return api_error('Failed to read worksheet from uploaded file')
+
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return api_error('Uploaded Excel file is empty')
+
+        headers = [
+            _normalize_excel_header(header) or f'column_{idx + 1}'
+            for idx, header in enumerate(rows[0])
+        ]
+
+        test_cases = []
+        for row in rows[1:]:
+            if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                continue
+
+            row_data = {}
+            for idx, cell_value in enumerate(row):
+                if idx >= len(headers):
+                    break
+                row_data[headers[idx]] = cell_value
+
+            test_cases.append(_build_test_case_from_excel_row(row_data, len(test_cases) + 1))
+
+        if not test_cases:
+            return api_error('No test case rows found in the uploaded Excel file')
+
+        return api_success({'test_cases': test_cases, 'count': len(test_cases), 'filename': filename})
+    except Exception as e:
+        return api_error(f'Excel upload failed: {str(e)}', status_code=500)
+
 @app.route('/api/export-excel', methods=['POST'])
 def export_excel():
     try:
@@ -491,6 +594,67 @@ def get_session_test_cases(session_id):
         session_info, test_cases = db.get_test_cases(session_id)
         if session_info is None: return api_error(f"Session {session_id} not found", status_code=404)
         return api_success({'session_info': session_info, 'test_cases': test_cases, 'count': len(test_cases)})
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+
+@app.route('/api/active-testcase-pool', methods=['GET'])
+def get_active_testcase_pool():
+    try:
+        db = get_database()
+        success, message, pool_data, total_rows = db.get_active_testcase_pool()
+        if success:
+            return api_success({'pool': pool_data, 'count': total_rows, 'message': message})
+        return api_error(message, status_code=500)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+
+@app.route('/api/active-testcase-pool', methods=['POST'])
+def save_active_testcase_pool():
+    try:
+        data = request.get_json() or {}
+        pool_data = data.get('pool', {})
+        if not isinstance(pool_data, dict):
+            return api_error('Invalid pool payload')
+
+        db = get_database()
+        success, message, saved_count = db.save_active_testcase_pool(pool_data)
+        if success:
+            return api_success({'message': message, 'saved_count': saved_count})
+        return api_error(message, status_code=500)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+
+@app.route('/api/active-test-suites', methods=['GET'])
+def get_active_test_suites():
+    try:
+        db = get_database()
+        success, message, suites, active_suite_id, total_rows = db.get_active_test_suites()
+        if success:
+            return api_success({
+                'suites': suites,
+                'active_suite_id': active_suite_id,
+                'count': total_rows,
+                'message': message
+            })
+        return api_error(message, status_code=500)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+
+@app.route('/api/active-test-suites', methods=['POST'])
+def save_active_test_suites():
+    try:
+        data = request.get_json() or {}
+        suites = data.get('suites', [])
+        active_suite_id = data.get('active_suite_id')
+
+        if not isinstance(suites, list):
+            return api_error('Invalid suites payload')
+
+        db = get_database()
+        success, message, saved_count = db.save_active_test_suites(suites, active_suite_id)
+        if success:
+            return api_success({'message': message, 'saved_count': saved_count})
+        return api_error(message, status_code=500)
     except Exception as e:
         return api_error(str(e), status_code=500)
 

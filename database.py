@@ -35,8 +35,8 @@ class TestCaseDatabase:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default database configuration."""
         return {
-            'server': 'LPT1671-B1',
-            'database': 'TestCasesDB',
+            'server': 'LPT2084-B1',
+            'database': 'Quinnox_Client',
             'driver': '{ODBC Driver 17 for SQL Server}',
             'use_windows_auth': True  # Use Windows Authentication
         }
@@ -194,6 +194,62 @@ class TestCaseDatabase:
             
         except Exception as e:
             print(f"Error ensuring table '{table_name}' exists: {e}")
+            return False
+
+    def _ensure_active_testcase_pool_table_exists(self, cursor) -> bool:
+        """Ensure the active testcase pool table exists."""
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='active_testcase_pool' AND xtype='U')
+                CREATE TABLE active_testcase_pool (
+                    pool_item_id NVARCHAR(50) PRIMARY KEY,
+                    group_key NVARCHAR(255) NOT NULL,
+                    test_case_index INT NOT NULL,
+                    test_case_id NVARCHAR(100),
+                    test_case_data NVARCHAR(MAX) NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_active_testcase_pool_group_key')
+                CREATE INDEX idx_active_testcase_pool_group_key ON active_testcase_pool(group_key)
+            """)
+
+            return True
+        except Exception as e:
+            print(f"Error ensuring 'active_testcase_pool' table exists: {e}")
+            return False
+
+    def _ensure_active_test_suites_table_exists(self, cursor) -> bool:
+        """Ensure the active test suites table exists."""
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='active_test_suites' AND xtype='U')
+                CREATE TABLE active_test_suites (
+                    suite_id NVARCHAR(100) PRIMARY KEY,
+                    suite_name NVARCHAR(255) NOT NULL,
+                    suite_index INT NOT NULL,
+                    suite_data NVARCHAR(MAX) NOT NULL,
+                    is_active BIT DEFAULT 0,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    updated_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_active_test_suites_index')
+                CREATE INDEX idx_active_test_suites_index ON active_test_suites(suite_index)
+            """)
+
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_active_test_suites_active')
+                CREATE INDEX idx_active_test_suites_active ON active_test_suites(is_active)
+            """)
+
+            return True
+        except Exception as e:
+            print(f"Error ensuring 'active_test_suites' table exists: {e}")
             return False
     
     def _extract_response_code(self, expected_str: str) -> str:
@@ -390,6 +446,16 @@ class TestCaseDatabase:
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_test_case_sessions_created_at')
                 CREATE INDEX idx_test_case_sessions_created_at ON test_case_sessions(created_at DESC)
             """)
+
+            if not self._ensure_active_testcase_pool_table_exists(cursor):
+                conn.rollback()
+                conn.close()
+                return False, "Failed to create or verify active_testcase_pool table"
+
+            if not self._ensure_active_test_suites_table_exists(cursor):
+                conn.rollback()
+                conn.close()
+                return False, "Failed to create or verify active_test_suites table"
             
             conn.commit()
             conn.close()
@@ -538,6 +604,278 @@ class TestCaseDatabase:
             error_msg = f"Failed to save test cases: {str(e)}"
             print(f"[ERROR] {error_msg}")
             return False, error_msg, None, saved_count
+
+    def save_active_testcase_pool(self, pool_data: Dict[str, List[Dict[str, Any]]]) -> Tuple[bool, str, int]:
+        """
+        Replace and persist the active testcase pool.
+
+        Args:
+            pool_data: Mapping of group_key -> list of testcase objects.
+
+        Returns:
+            Tuple of (success, message, saved_count)
+        """
+        if not isinstance(pool_data, dict):
+            return False, "Invalid pool payload", 0
+
+        success, message = self.test_connection()
+        if not success:
+            success, message = self._create_database_and_tables()
+            if not success:
+                return False, f"Failed to initialize database/tables: {message}", 0
+
+        conn = None
+        saved_count = 0
+
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            if not self._ensure_active_testcase_pool_table_exists(cursor):
+                return False, "Failed to create or verify active_testcase_pool table", 0
+
+            cursor.execute("DELETE FROM active_testcase_pool")
+
+            for group_key, test_cases in pool_data.items():
+                if not isinstance(group_key, str) or not isinstance(test_cases, list):
+                    continue
+
+                for index, test_case in enumerate(test_cases, 1):
+                    normalized_case = test_case if isinstance(test_case, dict) else {'value': test_case}
+                    test_case_id = str(normalized_case.get('id', ''))[:100]
+                    test_case_json = json.dumps(normalized_case, ensure_ascii=False, default=str)
+
+                    cursor.execute("""
+                        INSERT INTO active_testcase_pool
+                        (pool_item_id, group_key, test_case_index, test_case_id, test_case_data)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, str(uuid.uuid4()), group_key[:255], index, test_case_id, test_case_json)
+                    saved_count += 1
+
+            conn.commit()
+            return True, f"Active testcase pool saved ({saved_count} rows)", saved_count
+
+        except Exception as e:
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except:
+                pass
+            return False, f"Failed to save active testcase pool: {str(e)}", 0
+
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except:
+                pass
+
+    def get_active_testcase_pool(self) -> Tuple[bool, str, Dict[str, List[Dict[str, Any]]], int]:
+        """
+        Load active testcase pool from database.
+
+        Returns:
+            Tuple of (success, message, pool_data, total_rows)
+        """
+        success, message = self.test_connection()
+        if not success:
+            success, message = self._create_database_and_tables()
+            if not success:
+                return False, f"Failed to initialize database/tables: {message}", {}, 0
+
+        conn = None
+
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            if not self._ensure_active_testcase_pool_table_exists(cursor):
+                return False, "Failed to create or verify active_testcase_pool table", {}, 0
+
+            cursor.execute("""
+                SELECT group_key, test_case_index, test_case_data
+                FROM active_testcase_pool
+                ORDER BY group_key, test_case_index
+            """)
+
+            rows = cursor.fetchall()
+            pool_data: Dict[str, List[Dict[str, Any]]] = {}
+
+            for row in rows:
+                group_key = str(row.group_key)
+                test_case_raw = row.test_case_data
+
+                try:
+                    test_case = json.loads(test_case_raw) if test_case_raw else {}
+                except Exception:
+                    test_case = {}
+
+                if group_key not in pool_data:
+                    pool_data[group_key] = []
+
+                if isinstance(test_case, dict):
+                    pool_data[group_key].append(test_case)
+                else:
+                    pool_data[group_key].append({'value': test_case})
+
+            return True, f"Loaded active testcase pool ({len(rows)} rows)", pool_data, len(rows)
+
+        except Exception as e:
+            return False, f"Failed to load active testcase pool: {str(e)}", {}, 0
+
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except:
+                pass
+
+    def save_active_test_suites(self, suites: List[Dict[str, Any]], active_suite_id: Optional[str]) -> Tuple[bool, str, int]:
+        """
+        Replace and persist active test suites.
+
+        Args:
+            suites: List of suite objects with {id, name, cases}.
+            active_suite_id: Currently selected suite id.
+
+        Returns:
+            Tuple of (success, message, saved_count)
+        """
+        if not isinstance(suites, list):
+            return False, "Invalid suites payload", 0
+
+        success, message = self.test_connection()
+        if not success:
+            success, message = self._create_database_and_tables()
+            if not success:
+                return False, f"Failed to initialize database/tables: {message}", 0
+
+        conn = None
+        saved_count = 0
+
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            if not self._ensure_active_test_suites_table_exists(cursor):
+                return False, "Failed to create or verify active_test_suites table", 0
+
+            cursor.execute("DELETE FROM active_test_suites")
+
+            for suite_index, suite in enumerate(suites, 1):
+                if not isinstance(suite, dict):
+                    continue
+
+                suite_id = str(suite.get('id') or str(uuid.uuid4()))[:100]
+                suite_name = str(suite.get('name') or 'Unnamed Suite')[:255]
+                suite_cases = suite.get('cases', [])
+                if not isinstance(suite_cases, list):
+                    suite_cases = []
+
+                suite_payload = {
+                    'id': suite_id,
+                    'name': suite_name,
+                    'cases': suite_cases
+                }
+                suite_json = json.dumps(suite_payload, ensure_ascii=False, default=str)
+                is_active = 1 if active_suite_id and suite_id == str(active_suite_id) else 0
+
+                cursor.execute("""
+                    INSERT INTO active_test_suites
+                    (suite_id, suite_name, suite_index, suite_data, is_active, updated_at)
+                    VALUES (?, ?, ?, ?, ?, GETDATE())
+                """, suite_id, suite_name, suite_index, suite_json, is_active)
+                saved_count += 1
+
+            conn.commit()
+            return True, f"Active test suites saved ({saved_count} rows)", saved_count
+
+        except Exception as e:
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except:
+                pass
+            return False, f"Failed to save active test suites: {str(e)}", 0
+
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except:
+                pass
+
+    def get_active_test_suites(self) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str], int]:
+        """
+        Load active test suites from database.
+
+        Returns:
+            Tuple of (success, message, suites, active_suite_id, total_rows)
+        """
+        success, message = self.test_connection()
+        if not success:
+            success, message = self._create_database_and_tables()
+            if not success:
+                return False, f"Failed to initialize database/tables: {message}", [], None, 0
+
+        conn = None
+
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            if not self._ensure_active_test_suites_table_exists(cursor):
+                return False, "Failed to create or verify active_test_suites table", [], None, 0
+
+            cursor.execute("""
+                SELECT suite_data, is_active
+                FROM active_test_suites
+                ORDER BY suite_index
+            """)
+
+            rows = cursor.fetchall()
+            suites: List[Dict[str, Any]] = []
+            active_suite_id: Optional[str] = None
+
+            for row in rows:
+                suite_raw = row.suite_data
+                is_active = bool(row.is_active)
+
+                try:
+                    suite_obj = json.loads(suite_raw) if suite_raw else {}
+                except Exception:
+                    suite_obj = {}
+
+                if not isinstance(suite_obj, dict):
+                    continue
+
+                suite_id = str(suite_obj.get('id') or '')
+                suite_name = str(suite_obj.get('name') or 'Unnamed Suite')
+                suite_cases = suite_obj.get('cases', [])
+                if not isinstance(suite_cases, list):
+                    suite_cases = []
+
+                suite_data = {
+                    'id': suite_id,
+                    'name': suite_name,
+                    'cases': suite_cases
+                }
+                suites.append(suite_data)
+
+                if is_active and suite_id:
+                    active_suite_id = suite_id
+
+            return True, f"Loaded active test suites ({len(rows)} rows)", suites, active_suite_id, len(rows)
+
+        except Exception as e:
+            return False, f"Failed to load active test suites: {str(e)}", [], None, 0
+
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except:
+                pass
     
     def get_sessions(self, limit: int = 50, offset: int = 0,
                      endpoint_filter: Optional[str] = None,

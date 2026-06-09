@@ -456,7 +456,7 @@
                         <i data-lucide="file-spreadsheet" style="width: 32px; height: 32px; color: var(--success); margin-bottom: 8px;"></i>
                         <h4>Import Excel</h4>
                         <p style="font-size: 0.8rem; color: var(--gray);">Load test cases from spreadsheet into pool</p>
-                        <input type="file" id="excelFileMain" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload(this)">
+                        <input type="file" id="excelFileMain" accept=".xlsx" style="display: none;" onchange="handleExcelUpload(this)">
                     </div>
 
                     <div class="upload-zone" onclick="showDatabaseSessions()" style="margin: 0; padding: 24px; background: #faf5ff; border-color: #e9d5ff;">
@@ -804,11 +804,111 @@
         // GLOBAL DATA STRUCTURES
         // testCasePool holds generated/uploaded cases as groups. Key: "domain_endpoint_METHOD"
         window.testCasePool = {}; 
+        const DB_POOL_SYNC_DEBOUNCE_MS = 400;
+        const DB_SUITES_SYNC_DEBOUNCE_MS = 300;
+        let poolSyncTimer = null;
+        let suitesSyncTimer = null;
         
         let activeSuiteCases = [];
         let savedSuites = []; 
         let lastResults = [];
         let lastExecutedTestCases = [];
+
+        async function persistPoolState() {
+            try {
+                await fetch('/api/active-testcase-pool', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pool: window.testCasePool })
+                });
+            } catch (e) {
+                // Silent fallback; UI should not block on background persistence.
+            }
+        }
+
+        function schedulePoolPersistence() {
+            if (poolSyncTimer) {
+                clearTimeout(poolSyncTimer);
+            }
+
+            poolSyncTimer = setTimeout(() => {
+                persistPoolState();
+            }, DB_POOL_SYNC_DEBOUNCE_MS);
+        }
+
+        async function persistSuitesState(activeSuiteId = '') {
+            try {
+                await fetch('/api/active-test-suites', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ suites: savedSuites, active_suite_id: activeSuiteId || null })
+                });
+            } catch (e) {
+                // Silent fallback; UI should not block on background persistence.
+            }
+        }
+
+        function scheduleSuitesPersistence(activeSuiteId = '') {
+            if (suitesSyncTimer) {
+                clearTimeout(suitesSyncTimer);
+            }
+
+            suitesSyncTimer = setTimeout(() => {
+                persistSuitesState(activeSuiteId);
+            }, DB_SUITES_SYNC_DEBOUNCE_MS);
+        }
+
+        function renderSuiteSelector(selectedSuiteId = '') {
+            const selector = document.getElementById('suiteSelector');
+            if (!selector) return;
+
+            selector.innerHTML = '<option value="">None Selected</option>';
+            savedSuites.forEach(suite => {
+                const option = document.createElement('option');
+                option.value = suite.id;
+                option.textContent = `${suite.name} (${suite.cases.length} cases)`;
+                selector.appendChild(option);
+            });
+
+            if (selectedSuiteId && savedSuites.some(s => s.id === selectedSuiteId)) {
+                selector.value = selectedSuiteId;
+            }
+        }
+
+        async function restorePersistedState() {
+            window.testCasePool = {};
+            savedSuites = [];
+            let activeSuiteId = '';
+
+            try {
+                const response = await fetch('/api/active-testcase-pool');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.pool && typeof data.pool === 'object' && !Array.isArray(data.pool)) {
+                        window.testCasePool = data.pool;
+                    }
+                }
+            } catch (e) {
+                // Keep default empty state when DB load fails.
+            }
+
+            try {
+                const response = await fetch('/api/active-test-suites');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && Array.isArray(data.suites)) {
+                        savedSuites = data.suites;
+                        activeSuiteId = data.active_suite_id || '';
+                    }
+                }
+            } catch (e) {
+                // Keep default suite state when DB load fails.
+            }
+
+            updatePoolUI();
+            renderSuiteSelector(activeSuiteId);
+            loadSelectedSuite(false);
+        }
 
         // GLOBAL TOAST NOTIFICATIONS
         function showToast(msg, type = 'success') {
@@ -872,11 +972,13 @@
             for(let key in incomingGroups) {
                 window.testCasePool[key] = incomingGroups[key];
             }
+            schedulePoolPersistence();
             updatePoolUI();
         }
 
         function deletePoolGroup(key) {
             delete window.testCasePool[key];
+            schedulePoolPersistence();
             updatePoolUI();
             showSuccess(`Deleted scenario group: ${key}`);
             
@@ -1087,9 +1189,21 @@
         const payloadValidation = document.getElementById('payloadValidation');
 
         lucide.createIcons();
-        document.addEventListener("DOMContentLoaded", initAllCustomSelects);
+        document.addEventListener("DOMContentLoaded", async () => {
+            initAllCustomSelects();
+            await restorePersistedState();
+        });
 
         const environmentUrls = { custom: '', dev: 'https://api-dev.example.com', staging: 'https://api-staging.example.com', production: 'https://api.example.com' };
+
+        function getSelectedEnvironmentConfig() {
+            const selectedEnvironment = document.getElementById('environment').value;
+            const baseUrl = (selectedEnvironment === 'custom' || selectedEnvironment === 'mock')
+                ? document.getElementById('customUrl').value
+                : (environmentUrls[selectedEnvironment] || '');
+
+            return { selectedEnvironment, baseUrl };
+        }
 
         document.getElementById('method').addEventListener('change', (e) => {
             const val = e.target.value;
@@ -1102,8 +1216,8 @@
         });
 
         document.getElementById('environment').addEventListener('change', (e) => {
-            let currentEnvironment = e.target.value;
-            document.getElementById('customUrlGroup').style.display = (currentEnvironment === 'custom') ? 'block' : 'none';
+            const selectedEnvironment = e.target.value;
+            document.getElementById('customUrlGroup').style.display = (selectedEnvironment === 'custom') ? 'block' : 'none';
         });
 
         document.querySelectorAll('input[name="param_type"]').forEach(radio => {
@@ -1209,6 +1323,7 @@
 
         async function handleExcelUpload(input) {
             if (!input.files?.[0]) return;
+            const uploadedFilename = input.files[0].name;
             const formData = new FormData();
             formData.append('file', input.files[0]);
             try {
@@ -1216,7 +1331,10 @@
                 const data = await response.json();
                 if (data.success) {
                     addToPool(data.test_cases);
-                    showSuccess(`Loaded ${data.test_cases.length} cases from ${input.files[0].name}. Available in Create Suite.`);
+                    const baseName = uploadedFilename.replace(/\.[^.]+$/, '');
+                    createAndLoadSuiteFromCases(data.test_cases, `Excel - ${baseName}`);
+                    navigateTo('test-lab-view', 'nav-test-lab');
+                    showSuccess(`Loaded ${data.test_cases.length} cases from ${uploadedFilename} and opened in Test Lab.`);
                 } else showError(data.error);
             } catch (e) { showError('Upload failed'); }
             finally { input.value = ''; lucide.createIcons(); }
@@ -1232,8 +1350,13 @@
                 
                 const testCases = data.test_cases || [];
                 addToPool(testCases);
+                const suiteName = (data.session_info && data.session_info.session_name)
+                    ? data.session_info.session_name
+                    : `DB Session ${sessionId.slice(0, 8)}`;
+                createAndLoadSuiteFromCases(testCases, suiteName);
                 hideDatabaseModal();
-                showSuccess(`Loaded ${testCases.length} test cases into the Test Plan pool.`);
+                navigateTo('test-lab-view', 'nav-test-lab');
+                showSuccess(`Loaded ${testCases.length} test cases and opened in Test Lab.`);
             } catch (error) { showError(`Failed to load test cases: ${error.message}`); }
         }
 
@@ -1412,13 +1535,7 @@
             
             const suiteId = Date.now().toString();
             savedSuites.push({ id: suiteId, name: suiteName, cases: newSuiteCases });
-            
-            const selector = document.getElementById('suiteSelector');
-            const newOption = document.createElement('option');
-            newOption.value = suiteId;
-            newOption.textContent = `${suiteName} (${newSuiteCases.length} cases)`;
-            selector.appendChild(newOption);
-            selector.value = suiteId;
+            renderSuiteSelector(suiteId);
             
             document.getElementById('suiteModal').style.display = 'none';
             showSuccess(`Saved and loaded suite: ${suiteName}`);
@@ -1426,7 +1543,19 @@
             loadSelectedSuite();
         }
 
-        function loadSelectedSuite() {
+        function createAndLoadSuiteFromCases(cases, suiteName) {
+            if (!Array.isArray(cases) || cases.length === 0) return;
+
+            const suiteId = `${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+            const finalSuiteName = suiteName || 'Imported Suite';
+
+            savedSuites.push({ id: suiteId, name: finalSuiteName, cases: cases });
+            renderSuiteSelector(suiteId);
+
+            loadSelectedSuite();
+        }
+
+        function loadSelectedSuite(shouldPersist = true) {
             const suiteId = document.getElementById('suiteSelector').value;
             const deleteBtn = document.getElementById('deleteSuiteBtn');
 
@@ -1435,6 +1564,7 @@
                 document.getElementById('testCasesWrapper').style.display = 'none';
                 document.getElementById('testLabEmptyState').style.display = 'block';
                 if (deleteBtn) deleteBtn.style.display = 'none';
+                if (shouldPersist) scheduleSuitesPersistence('');
                 return;
             }
             
@@ -1445,6 +1575,9 @@
                 activeSuiteCases = suite.cases;
                 document.getElementById('testLabEmptyState').style.display = 'none';
                 renderTestLabTables();
+                if (shouldPersist) scheduleSuitesPersistence(suiteId);
+            } else if (shouldPersist) {
+                scheduleSuitesPersistence('');
             }
         }
 
@@ -1454,10 +1587,7 @@
             if (!suiteId) return;
 
             savedSuites = savedSuites.filter(s => s.id !== suiteId);
-            const optionToRemove = selector.querySelector(`option[value="${suiteId}"]`);
-            if (optionToRemove) optionToRemove.remove();
-
-            selector.value = "";
+            renderSuiteSelector();
             loadSelectedSuite();
             showSuccess("Test suite deleted successfully.");
         }
@@ -1850,6 +1980,8 @@
                 return;
             }
 
+            const { selectedEnvironment, baseUrl } = getSelectedEnvironmentConfig();
+
             const fieldConfigs = {};
             document.querySelectorAll('#fieldTableBody tr').forEach(row => {
                 const field = row.cells[0].textContent.trim();
@@ -1861,7 +1993,7 @@
             try {
                 const res = await fetch('/api/export-excel', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint, method, payload: payloadInput.value, field_name: document.getElementById('field-name').value, search_string: document.getElementById('search-txt').value, field_configs: fieldConfigs, baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock') ? document.getElementById('customUrl').value : environmentUrls[currentEnvironment], param_type: document.querySelector('input[name="param_type"]:checked').value, environment: currentEnvironment })
+                    body: JSON.stringify({ endpoint, method, payload: payloadInput.value, field_name: document.getElementById('field-name').value, search_string: document.getElementById('search-txt').value, field_configs: fieldConfigs, baseUrl, param_type: document.querySelector('input[name="param_type"]:checked').value, environment: selectedEnvironment })
                 });
 
                 if (!res.ok) throw new Error("Export Failed");
@@ -1884,6 +2016,8 @@
             const endpoint = document.getElementById('endpoint').value;
             if (!method || !endpoint) { showError('Fill required fields first'); return; }
 
+            const { selectedEnvironment, baseUrl } = getSelectedEnvironmentConfig();
+
             const fieldConfigs = {};
             document.querySelectorAll('#fieldTableBody tr').forEach(row => {
                 const field = row.cells[0].textContent.trim();
@@ -1896,11 +2030,15 @@
                 showSuccess('Saving test cases to database...');
                 const res = await fetch('/api/save-to-database', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint, method, payload: payloadInput.value, field_name: document.getElementById('field-name').value, search_string: document.getElementById('search-txt').value, field_configs: fieldConfigs, baseUrl: (currentEnvironment === 'custom' || currentEnvironment === 'mock') ? document.getElementById('customUrl').value : environmentUrls[currentEnvironment], param_type: document.querySelector('input[name="param_type"]:checked').value, environment: currentEnvironment })
+                    body: JSON.stringify({ endpoint, method, payload: payloadInput.value, field_name: document.getElementById('field-name').value, search_string: document.getElementById('search-txt').value, field_configs: fieldConfigs, baseUrl, param_type: document.querySelector('input[name="param_type"]:checked').value, environment: selectedEnvironment })
                 });
                 if (!res.ok) throw new Error("Save Failed");
                 const result = await res.json();
                 showSuccess(`Test cases saved! Session ID: ${result.session_id}`);
+
+                if (result.session_id) {
+                    await loadSessionTestCases(result.session_id);
+                }
             } catch (e) { showError('Database save failed: ' + e.message); }
         }
 
