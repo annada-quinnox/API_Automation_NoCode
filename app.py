@@ -1351,7 +1351,11 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
                                 fallback_element = title_match.group(1).strip()
                             body_assertion_msg = f"✅ Graceful Fallback Passed: Server ignored the invalid parameter and safely loaded the default state.\n↳ Fallback Header Loaded: '{fallback_element}'"
 
-        response_text = response.text[:1000] if response.text else '(No response body)'
+        try:
+            response_json = response.json()
+            response_text = json.dumps(response_json, indent=2)
+        except (ValueError, requests.exceptions.JSONDecodeError):
+            response_text = response.text if response.text else '(No response body)'
 
         schema_valid = True
         schema_errors = []
@@ -1362,21 +1366,25 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
 
         print(f"\n--- Test Case Execution: {test_id} ---")
         print(f"Source: {source}")
+
         if additional_info:
             for info in additional_info:
                 print(f"  {info}")
-        print(f"Request URL: {response.url}")
-        print(f"Content Type: {response.headers.get('Content-Type')}")
-        print(f"Response Length: {len(response.text) if response.text else 0}")
+
+        print(f"Request URL: {response.request.url}")
         print(f"HTTP Method: {method}")
         print(f"Expected Status: {format_expected_for_display(expected)}")
         print(f"Actual Status: {response.status_code}")
-        print(f"Response Body: {response.text}")
+        print(f"Response Body:\n{response_text}")
+        print(response.text if response.text else "(No response body)")
         print("-" * 40)
 
-        details_parts = [f"Request URL: {response.url}"]
-        details_parts.append(f"Content Type: {response.headers.get('Content-Type')}")
-        details_parts.append(f"Response Length: {len(response.text) if response.text else 0}")
+        details_parts = [
+            f"Request URL: {response.request.url}",
+            f"HTTP Method: {method}",
+        ]
+        #details_parts.append(f"Content Type: {response.headers.get('Content-Type')}")
+        #details_parts.append(f"Response Length: {len(response.text) if response.text else 0}")
         if additional_info:
             details_parts.append(f"Source: {source} ({', '.join(additional_info)})")
         else:
@@ -1399,7 +1407,9 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             for err in schema_errors:
                 details_parts.append(f"  • {err}")
         
-        details_parts.append(f"\nResponse Body:\n{response_text}")
+        details_parts.append(
+            f"\nResponse Body:\n{response_text}"
+        )
         
         return {
             'testCaseId': test_id,

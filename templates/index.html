@@ -952,7 +952,7 @@
         }
 
         .result-details {
-            background: #1e293b;
+            background: #002053;
             color: #e2e8f0;
             padding: 12px;
             border-radius: 8px;
@@ -962,6 +962,7 @@
             max-height: 150px;
             overflow-y: auto;
             white-space: pre-wrap;
+            text-align: left !important;
         }
 
         /* Modal Styles */
@@ -2858,6 +2859,16 @@
             });
         }
 
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
         async function executeSelectedTests() {
             if (!activeSuiteCases || activeSuiteCases.length === 0) { showError('No active suite loaded.'); return; }
 
@@ -2919,13 +2930,51 @@
                     const item = document.createElement('div');
                     item.className = 'result-item';
                     item.style.borderLeft = `4px solid ${isPass ? 'var(--success)' : 'var(--danger)'}`;
+                    const scenarioName = selected[i]?.scenario || r.testCaseId || `Test ${i + 1}`;
+
+                    let formattedResponseBody = '(No response body)';
+
+                    if (r.responseBody !== null && r.responseBody !== undefined && r.responseBody !== '') {
+                        try {
+                            const parsedBody = typeof r.responseBody === 'string'
+                                ? JSON.parse(r.responseBody)
+                                : r.responseBody;
+
+                            formattedResponseBody = JSON.stringify(parsedBody, null, 2);
+                        } catch (e) {
+                            // API returned HTML, plain text, XML, etc.
+                            // Keep the original response exactly as received.
+                            formattedResponseBody = String(r.responseBody);
+                        }
+                    }
+
+                    // IMPORTANT:
+                    // Escape the response so HTML is displayed as TEXT,
+                    // instead of being rendered by the browser.
+                    const safeResponseBody = escapeHtml(formattedResponseBody);
+
+                    const safeDetails = escapeHtml(r.details || 'No details available');
+                    const executionDetails =
+                        `${safeDetails.trim()}\n\n` +
+                        `Response Body:\n` +
+                        `${safeResponseBody}`;
+
                     item.innerHTML = `
                         <div class="result-header">
-                            <span class="badge ${isPass ? 'badge-success' : 'badge-danger'}">${isPass ? 'PASS' : 'FAIL'}</span>
-                            <div style="font-weight:600; flex:1">${selected[i]?.scenario || r.testCaseId || `Test ${i + 1}`}</div>
-                            <div class="badge badge-info">HTTP ${r.statusCode || 'N/A'}</div>
+                            <span class="badge ${isPass ? 'badge-success' : 'badge-danger'}">
+                                ${isPass ? 'PASS' : 'FAIL'}
+                            </span>
+
+                            <div style="font-weight:600; flex:1">
+                                ${escapeHtml(scenarioName)}
+                            </div>
+
+                            <div class="badge badge-info">
+                                HTTP ${r.statusCode || 'N/A'}
+                            </div>
                         </div>
-                        <div class="result-details">${r.details || 'No details available'}</div>
+
+                        <div class="result-details">${executionDetails}</div>
                     `;
                     resultsList.appendChild(item);
                 });
