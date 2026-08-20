@@ -1230,7 +1230,7 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.5'
         }
         
@@ -1355,7 +1355,18 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             response_json = response.json()
             response_text = json.dumps(response_json, indent=2)
         except (ValueError, requests.exceptions.JSONDecodeError):
-            response_text = response.text if response.text else '(No response body)'
+            if response.text:
+                try:
+                    response_json = response.json()
+                    response_text = json.dumps(
+                        response_json,
+                        indent=2,
+                        ensure_ascii=False
+                    )
+                except (ValueError, requests.exceptions.JSONDecodeError):
+                    response_text = response.text
+            else:
+                response_text = '(No response body)'
 
         schema_valid = True
         schema_errors = []
@@ -1406,10 +1417,6 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
             details_parts.append(f"\nSchema Validation Failed:")
             for err in schema_errors:
                 details_parts.append(f"  • {err}")
-        
-        details_parts.append(
-            f"\nResponse Body:\n{response_text}"
-        )
         
         return {
             'testCaseId': test_id,
