@@ -1,4 +1,6 @@
+from concurrent.futures import process
 from urllib import response
+from click import command
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 from testcaseengine import generate_testcases, flatten
@@ -916,10 +918,32 @@ def run_performance_test():
         except Exception as e:
             sample_output = f"Failed to fetch sample: {str(e)}"
 
-        users = str(data.get('users', 50))       
-        spawn_rate = str(data.get('spawnRate', 10)) 
-        run_time = data.get('runTime', '10s')    
-        
+        performance_config = data.get('performanceConfig') or {}
+
+        users = performance_config.get('value')
+        spawn_rate = performance_config.get('spawnRate')
+        run_time = performance_config.get('runTime')   
+        if users is None or spawn_rate is None or run_time is None:
+            return api_error(
+                f"Performance configuration is missing for scenario: "
+                f"{test_case.get('scenario', 'Unknown')}"
+            )
+            try:
+                users = int(users)
+                spawn_rate = float(spawn_rate)
+            except (TypeError, ValueError):
+                return api_error(
+                    "Invalid performance configuration. "
+                    "Users and spawn rate must be numeric."
+                )
+            if users <= 0:
+                return api_error("Users must be greater than 0.")
+
+            if spawn_rate <= 0:
+                return api_error("Spawn rate must be greater than 0.")
+
+            if not str(run_time).strip():
+                return api_error("Run time cannot be empty.")
         locust_script = f"""from locust import HttpUser, task, between
 import json
 
@@ -974,12 +998,35 @@ class APIUser(HttpUser):
         print(f"\n🚀 Starting Locust Load Test on {base_url}{current_endpoint} [{method}]...")
         
         command = [
-            "locust", "-f", locust_file, "--headless",
-            "-u", users, "-r", spawn_rate, "--run-time", run_time, "--csv", csv_prefix
+            "locust",
+            "-f",
+            locust_file,
+            "--headless",
+            "-u",
+            str(users),
+            "-r",
+            str(spawn_rate),
+            "--run-time",
+            str(run_time),
+            "--csv",
+            csv_prefix
         ]
-        
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("✅ Load Test Complete! Parsing results...")
+
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+
+        print("\n--- LOCUST STDOUT ---")
+        print(process.stdout)
+
+        print("\n--- LOCUST STDERR ---")
+        print(process.stderr)
+
+        print("LOCUST EXIT CODE:", process.returncode)
 
         metrics = {}
         failure_details = []

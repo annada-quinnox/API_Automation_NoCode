@@ -2146,8 +2146,117 @@
             { id: 'endurance', label: 'Endurance', placeholder: '# of Users', spawnRate: 'Users/Sec', durationPlaceholder: 'Time', type: 'number' },
             { id: 'caching', label: 'Caching', type: 'radio', options: ['Yes', 'No'] }
         ];
-        let addedPerfs = [];
+        /*
+        function getPerformanceConfigForScenario(testCase, perfConfigs) {
+            const scenario = String(testCase.scenario || '').toLowerCase();
+            const type = String(testCase.type || '').toLowerCase();
 
+            let prefix = null;
+
+            if (
+                scenario.includes('rate limit') ||
+                scenario.includes('rate limiting') ||
+                type.includes('rate limit')
+            ) {
+                prefix = 'rate_limit';
+            }
+            else if (
+                scenario.includes('load factor') ||
+                type.includes('load factor')
+            ) {
+                prefix = 'load_factor';
+            }
+            else if (
+                scenario.includes('stress factor') ||
+                scenario.includes('stress test') ||
+                type.includes('stress')
+            ) {
+                prefix = 'stress_factor';
+            }
+            else if (
+                scenario.includes('endurance') ||
+                scenario.includes('soak') ||
+                type.includes('endurance')
+            ) {
+                prefix = 'endurance';
+            }
+
+            // This is not a performance scenario that we can map.
+            if (!prefix) {
+                return null;
+            }
+
+            const value = perfConfigs[prefix];
+            const spawn = perfConfigs[`${prefix}_spawn`];
+            const duration = perfConfigs[`${prefix}_duration`];
+            const unit = perfConfigs[`${prefix}_unit`];
+
+            // Do NOT create defaults here.
+            // The values must come from Test Plan.
+            if (
+                value === undefined ||
+                value === '' ||
+                spawn === undefined ||
+                spawn === '' ||
+                duration === undefined ||
+                duration === ''
+            ) {
+                return null;
+            }
+
+            return {
+                value: value,
+                spawn: spawn,
+                duration: duration,
+                unit: unit || 'seconds'
+            };
+        }
+        */
+
+        let addedPerfs = [];
+        function buildPerformanceConfigs(perfConfigs) {
+            const configs = [];
+
+            const performanceTypes = [
+                'rate_limit',
+                'load_factor',
+                'stress_factor',
+                'endurance'
+            ];
+
+            performanceTypes.forEach(type => {
+                const value = perfConfigs[type];
+
+                if (value === undefined || value === null || value === '') {
+                    return;
+                }
+
+                const spawn = perfConfigs[`${type}_spawn`];
+                const duration = perfConfigs[`${type}_duration`];
+                const unit = perfConfigs[`${type}_unit`] || 'seconds';
+
+                if (
+                    spawn === undefined ||
+                    spawn === null ||
+                    spawn === '' ||
+                    duration === undefined ||
+                    duration === null ||
+                    duration === ''
+                ) {
+                    return;
+                }
+
+                configs.push({
+                    type: type,
+                    value: value,
+                    spawn: spawn,
+                    duration: duration,
+                    unit: unit
+                });
+            });
+
+            return configs;
+        }
         function addNextPerfConfig() {
             const available = perfOptions.filter(o => !addedPerfs.includes(o.id));
             if (available.length === 0) return;
@@ -2544,12 +2653,115 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        data.test_cases.forEach(tc => {
+                        const performanceConfigs = buildPerformanceConfigs(perfConfigs);
+
+                        data.test_cases.forEach((tc) => {
+
                             if (!tc.baseUrl && !tc.base_url) {
                                 tc.baseUrl = envUrl;
                             }
-                            tc.perf_config = { ...perfConfigs };
+
+                            const scenario = String(tc.scenario || '').toLowerCase();
+                            const tcType = String(tc.type || '').toLowerCase();
+
+                            let performanceType = null;
+
+                            // -----------------------------
+                            // Identify scenario type
+                            // -----------------------------
+
+                            if (
+                                scenario.includes('rate limit') ||
+                                scenario.includes('rate limiting') ||
+                                tcType.includes('rate limit') ||
+                                String(tc.expected || '').includes('429')
+                            ) {
+                                performanceType = 'rate_limit';
+                            }
+                            else if (
+                                scenario.includes('load factor') ||
+                                scenario.includes('load test') ||
+                                scenario.includes('response time') ||
+                                tcType.includes('load factor')
+                            ) {
+                                performanceType = 'load_factor';
+                            }
+                            else if (
+                                scenario.includes('stress factor') ||
+                                scenario.includes('stress test') ||
+                                scenario.includes('stress') ||
+                                tcType.includes('stress')
+                            ) {
+                                performanceType = 'stress_factor';
+                            }
+                            else if (
+                                scenario.includes('endurance') ||
+                                scenario.includes('soak') ||
+                                tcType.includes('endurance')
+                            ) {
+                                performanceType = 'endurance';
+                            }
+                            else if (
+                                scenario.includes('caching') ||
+                                scenario.includes('cache') ||
+                                scenario.includes('etag') ||
+                                scenario.includes('cache-control') ||
+                                scenario.includes('conditional get')
+                            ) {
+                                performanceType = 'caching';
+                            }
+                            // -----------------------------
+                            // Assign matching configuration
+                            // -----------------------------
+
+                            if (performanceType === 'caching') {
+
+                                const cachingValue = perfConfigs.caching;
+
+                                if (cachingValue !== undefined && cachingValue !== '') {
+                                    tc.perf_config = {
+                                        type: 'caching',
+                                        value: cachingValue
+                                    };
+                                } else {
+                                    tc.perf_config = {};
+                                }
+
+                            }
+                            else if (performanceType) {
+
+                                const config = performanceConfigs.find(
+                                    cfg => cfg.type === performanceType
+                                );
+
+                                if (config) {
+                                    tc.perf_config = {
+                                        type: config.type,
+                                        value: config.value,
+                                        spawn: config.spawn,
+                                        duration: config.duration,
+                                        unit: config.unit
+                                    };
+                                } else {
+                                    tc.perf_config = {};
+                                }
+
+                            }
+                            else {
+                                tc.perf_config = {};
+                            }
+
+                            console.log(
+                                'PERFORMANCE CONFIG ASSIGNMENT:',
+                                {
+                                    scenario: tc.scenario,
+                                    testType: tc.type,
+                                    performanceType: performanceType,
+                                    perf_config: tc.perf_config
+                                }
+                            );
                         });
+
                         allCases = allCases.concat(data.test_cases);
                     }
                     else { hasError = true; errMsg = data.error || "Unknown error."; }
@@ -2770,23 +2982,76 @@
 
                 let perfInputs = '';
                 if (isPerf) {
-                    const perfConfig = tc.perf_config || {};
+                    const config = getPerformanceConfigForScenario(tc);
 
-                    perfInputs = `
-                        <div style="
-                            margin-top: 8px;
-                            padding: 8px 12px;
-                            background: #f8fafc;
-                            border: 1px solid var(--border);
-                            border-radius: 8px;
-                            font-size: 0.8rem;
-                            color: var(--gray);
-                        ">
-                            Users: ${perfConfig.rate_limit || '-'} |
-                            Spawn: ${perfConfig.rate_limit_spawn || '-'} |
-                            Duration: ${perfConfig.rate_limit_duration || '-'} ${perfConfig.rate_limit_unit || ''}
-                        </div>
-                    `;
+                    if (config) {
+                        const labels = {
+                            rate_limit: 'Rate Limit',
+                            load_factor: 'Load Factor',
+                            stress_factor: 'Stress Factor',
+                            endurance: 'Endurance',
+                            caching: 'Caching'
+                        };
+
+                        if (config.type === 'caching') {
+
+                            perfInputs = `
+                                <div style="
+                                    margin-top: 8px;
+                                    padding: 8px 12px;
+                                    background: #f8fafc;
+                                    border: 1px solid var(--border);
+                                    border-radius: 8px;
+                                    font-size: 0.8rem;
+                                    color: var(--gray);
+                                ">
+                                    <strong>Caching:</strong>
+                                    <span style="
+                                        font-weight: 600;
+                                        color: ${config.value === 'Yes' ? 'var(--success)' : 'var(--danger)'};
+                                    ">
+                                        ${config.value}
+                                    </span>
+                                </div>
+                            `;
+
+                        }
+                        else {
+
+                            perfInputs = `
+                                <div style="
+                                    margin-top: 8px;
+                                    padding: 8px 12px;
+                                    background: #f8fafc;
+                                    border: 1px solid var(--border);
+                                    border-radius: 8px;
+                                    font-size: 0.8rem;
+                                    color: var(--gray);
+                                ">
+                                    ${labels[config.type]}:
+                                    ${config.value} |
+                                    Spawn: ${config.spawnRate} |
+                                    Duration: ${config.duration} ${config.unit}
+                                </div>
+                            `;
+
+                        }
+                    }
+                    else {
+                        perfInputs = `
+                            <div style="
+                                margin-top: 8px;
+                                padding: 8px 12px;
+                                background: #fef2f2;
+                                border: 1px solid #fecaca;
+                                border-radius: 8px;
+                                font-size: 0.8rem;
+                                color: #dc2626;
+                            ">
+                                Performance configuration not configured
+                            </div>
+                        `;
+                    }
                 }
 
                 const testCaseCard = document.createElement('div');
@@ -3039,7 +3304,123 @@
             container.insertBefore(div, container.firstChild);
             lucide.createIcons();
         }
+        function getPerformanceConfigForScenario(tc) {
 
+            const config = tc.perf_config || {};
+            const scenario = String(tc.scenario || '').toLowerCase();
+
+            let type = null;
+
+            // -----------------------------
+            // Identify performance type
+            // -----------------------------
+
+            if (
+                scenario.includes('rate limit') ||
+                scenario.includes('rate limiting') ||
+                tc.expected_status === 429 ||
+                String(tc.expected || '').includes('429')
+            ) {
+                type = 'rate_limit';
+            }
+
+            else if (
+                scenario.includes('stress')
+            ) {
+                type = 'stress_factor';
+            }
+
+            else if (
+                scenario.includes('load') ||
+                scenario.includes('response time')
+            ) {
+                type = 'load_factor';
+            }
+
+            else if (
+                scenario.includes('endurance')
+            ) {
+                type = 'endurance';
+            }
+
+            // CACHING
+            else if (
+                scenario.includes('caching') ||
+                scenario.includes('cache') ||
+                scenario.includes('etag') ||
+                scenario.includes('cache-control') ||
+                scenario.includes('conditional get')
+            ) {
+                type = 'caching';
+            }
+
+            if (!type) {
+                return null;
+            }
+
+            // =====================================
+            // CACHING CONFIGURATION
+            // =====================================
+
+            if (type === 'caching') {
+
+                const cachingValue = config.value;
+
+                if (
+                    cachingValue === undefined ||
+                    cachingValue === null ||
+                    cachingValue === ''
+                ) {
+                    return null;
+                }
+
+                return {
+                    type: 'caching',
+                    value: String(cachingValue)
+                };
+            }
+
+            // =====================================
+            // NUMERIC PERFORMANCE CONFIGURATIONS
+            // =====================================
+
+            const value = config.value;
+            const spawnRate = config.spawn;
+            const duration = config.duration;
+            const unit = config.unit || 'seconds';
+
+            if (
+                value === undefined ||
+                value === null ||
+                value === '' ||
+                spawnRate === undefined ||
+                spawnRate === null ||
+                spawnRate === '' ||
+                duration === undefined ||
+                duration === null ||
+                duration === ''
+            ) {
+                return null;
+            }
+
+            let runTime = `${duration}s`;
+
+            if (unit === 'minutes') {
+                runTime = `${duration}m`;
+            }
+            else if (unit === 'hours') {
+                runTime = `${duration}h`;
+            }
+
+            return {
+                type,
+                value: Number(value),
+                spawnRate: Number(spawnRate),
+                duration: Number(duration),
+                unit,
+                runTime
+            };
+        }
         async function executePerformanceTest() {
             if (!activeSuiteCases || activeSuiteCases.length === 0) { showError('No active suite loaded.'); return; }
 
@@ -3072,27 +3453,40 @@
                 const tcIndex = activeSuiteCases.indexOf(tc);
                 const row = document.querySelector(`.test-case-checkbox[data-index="${tcIndex}"]`).closest('.test-case-card');
 
-                const perfConfig = tc.perf_config || {};
+                const performanceConfig = getPerformanceConfigForScenario(tc);
 
-                const users =
-                    perfConfig.rate_limit || "50";
-
-                const spawnRate =
-                    perfConfig.rate_limit_spawn || "10";
-
-                const duration =
-                    perfConfig.rate_limit_duration || "5";
-
-                const unit =
-                    perfConfig.rate_limit_unit || "seconds";
-
-                let runTime = duration + "s";
-
-                if (unit === "minutes") {
-                    runTime = duration + "m";
+                if (!performanceConfig) {
+                    showError(
+                        `Performance configuration is missing for scenario: ${tc.scenario}`
+                    );
+                    continue;
                 }
-                else if (unit === "hours") {
-                    runTime = duration + "h";
+
+                const users = performanceConfig.value;
+                const spawnRate = performanceConfig.spawnRate;
+                const runTime = performanceConfig.runTime;
+
+                if (
+                    users === undefined ||
+                    users === null ||
+                    users === '' ||
+                    spawnRate === undefined ||
+                    spawnRate === null ||
+                    spawnRate === '' ||
+                    runTime === undefined ||
+                    runTime === null ||
+                    runTime === ''
+                ) {
+                    showError(
+                        `Performance configuration is missing for scenario: ${tc.scenario}`
+                    );
+
+                    console.error(
+                        'Missing performance configuration:',
+                        tc
+                    );
+
+                    continue;
                 }
 
                 let activeEndpoint = tc.endpoint || '/';
@@ -3108,7 +3502,12 @@
                 try {
                     const res = await fetch('/api/run-performance', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ testCase: tc, endpoint: activeEndpoint, baseUrl: baseUrl, users: users, spawnRate: spawnRate, runTime: runTime })
+                        body: JSON.stringify({
+                            testCase: tc,
+                            endpoint: activeEndpoint,
+                            baseUrl: baseUrl,
+                            performanceConfig: performanceConfig
+                        })
                     });
 
                     if (!res.ok) {
