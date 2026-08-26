@@ -3225,7 +3225,10 @@
                         r.details || 'No details available'
                     );
 
+                    const testCaseId = r.testCaseId || selected[i]?.id || `TC-${i + 1}`;
+
                     const executionDetails =
+                        `Test Case ID: ${escapeHtml(testCaseId)}\n\n` +
                         `${safeDetails.trim()}\n\n` +
                         `Response Body:\n` +
                         `${safeResponseBody}`;
@@ -3236,6 +3239,10 @@
                                 ${isPass ? 'PASS' : 'FAIL'}
                             </span>
 
+                            <span class="badge badge-info">
+                                ${escapeHtml(testCaseId)}
+                            </span>
+
                             <div style="font-weight:600; flex:1">
                                 ${escapeHtml(scenarioName)}
                             </div>
@@ -3244,7 +3251,9 @@
                                 HTTP ${r.statusCode || 'N/A'}
                             </div>
                         </div>
-                        <div class="result-details">${executionDetails}</div>
+                    </div>
+
+                    <div class="result-details">${executionDetails}</div>
                     `;
                     resultsList.appendChild(item);
                 });

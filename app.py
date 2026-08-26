@@ -1438,6 +1438,7 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         print("-" * 40)
 
         details_parts = [
+            f"Test Case ID: {test_id}",
             f"Request URL: {response.request.url}",
             f"HTTP Method: {method}",
         ]
