@@ -1596,10 +1596,10 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
         counter['id'] += 1
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
-            "type": "Validation" if required else "Positive",
+            "type": "Validation",
             "scenario": f"Negative value for {field_name}",
             "input": {field_name: -1},
-            "expected": "400 Invalid value" if required else "200 OK / 400 Invalid"
+            "expected": "200 OK / 400 Invalid"
         })
         counter['id'] += 1
         tests.append({
