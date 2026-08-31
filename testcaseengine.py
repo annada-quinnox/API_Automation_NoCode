@@ -492,7 +492,7 @@ class GenerateTestcases:
                 "type": "Negative" if is_required or field_type not in ['string', 'email', 'url', 'password'] else "Positive",
                 "scenario": f"Null value for {field}",
                 "input": json.dumps(set_field(payload, field, None)),
-                "expected": "400 Bad Request" if is_required or field_type not in ['string', 'email', 'url', 'password'] else success_code
+                "expected": "400 Bad Request / 200 OK (if handled)" if is_required or field_type not in ['string', 'email', 'url', 'password'] else success_code
             })
             test_counter['id'] += 1
             
@@ -502,7 +502,7 @@ class GenerateTestcases:
                 "type": "Negative" if is_required or field_type != 'string' else "Positive",
                 "scenario": f"Empty string for {field}",
                 "input": json.dumps(set_field(payload, field, "")),
-                "expected": "400 Bad Request" if is_required or field_type != 'string' else success_code
+                "expected": "400 Bad Request / 200 OK (if handled)" if is_required or field_type != 'string' else success_code
             })
             test_counter['id'] += 1
             
@@ -551,7 +551,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"SQL injection in {field}",
                 "input": json.dumps(set_field(payload, field, "'; DROP TABLE; --")),
-                "expected": "400 Bad Request"
+                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
             })
             test_counter['id'] += 1
             
@@ -560,7 +560,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"XSS attempt in {field}",
                 "input": json.dumps(set_field(payload, field, "<script>alert(1)</script>")),
-                "expected": "400 Bad Request"
+                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
             })
             test_counter['id'] += 1
             
@@ -569,7 +569,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"Very long value in {field}",
                 "input": json.dumps(set_field(payload, field, "x" * 1000)),
-                "expected": "400 Bad Request"
+                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
             })
             test_counter['id'] += 1
         
@@ -1615,7 +1615,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "type": "Negative",
             "scenario": f"Float value for integer field {field_name}",
             "input": {field_name: 123.45},
-            "expected": "400 Invalid data type - integer expected"
+            "expected": "400 Invalid data type - integer expected / 200 OK if handled"
         })
         counter['id'] += 1
         tests.append({
@@ -1623,7 +1623,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "type": "Negative",
             "scenario": f"Very large number for {field_name}",
             "input": {field_name: 999999999999999999},
-            "expected": "400 Value out of range"
+            "expected": "400 Value out of range or 200 OK if handled"
         })
         counter['id'] += 1
         
@@ -1683,7 +1683,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "type": "Validation",
             "scenario": f"Very long string for {field_name}",
             "input": {field_name: "s" * 5000},
-            "expected": "400 String too long"
+            "expected": "400 String too long / 200 If accepted"
         })
         counter['id'] += 1
         min_length = max(1, len(str(value)) // 2)
