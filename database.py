@@ -547,7 +547,9 @@ class TestCaseDatabase:
             
             # Save filtered test cases to the dynamic table
             for i, test_case in enumerate(filtered_test_cases, 1):
-                test_case_id = str(uuid.uuid4())
+                test_case_id = str(
+                    test_case.get('id') or uuid.uuid4()
+                )[:50]
                 test_type = test_case.get('type', 'Positive')
                 scenario = test_case.get('scenario', '')
                 
@@ -571,6 +573,7 @@ class TestCaseDatabase:
                 metadata = {
                     'id': test_case.get('id', ''),
                     'additional_info': test_case.get('additional_info', {}),
+                    'field_configs': test_case.get('field_configs', {}),
                     'original_table': table_name
                 }
                 
@@ -1036,10 +1039,14 @@ class TestCaseDatabase:
                         metadata = json.loads(row.metadata)
                     except:
                         pass
-                
+                original_test_case_id = (
+                    metadata.get('id')
+                    or row.test_case_id
+                )
+
                 test_case = {
-                    'id': row.test_case_id,  # Map to 'id' for compatibility with execution logic
-                    'test_case_id': row.test_case_id,
+                    'id': original_test_case_id,
+                    'test_case_id': original_test_case_id,
                     'test_case_number': row.test_case_number,
                     'type': row.test_type,
                     'scenario': row.scenario,
@@ -1050,6 +1057,7 @@ class TestCaseDatabase:
                     'endpoint': row.endpoint,
                     'method': row.http_method,
                     'metadata': metadata,
+                    'field_configs': metadata.get('field_configs', {}),
                     'created_at': row.created_at.isoformat() if row.created_at else None
                 }
                 test_cases.append(test_case)
