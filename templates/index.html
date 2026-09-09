@@ -963,6 +963,10 @@
             overflow-y: auto;
             white-space: pre-wrap;
             text-align: left !important;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            direction: ltr !important;
         }
 
         /* Modal Styles */
@@ -1188,7 +1192,7 @@
             </a>
         </nav>
         <div style="margin-top: auto; padding: 20px; background: #f3f4f6; border-radius: 16px;">
-            <div style="font-size: 0.75rem; color: var(--gray); margin-bottom: 4px;">V12.2.4 Stable Version</div>
+            <div style="font-size: 0.75rem; color: var(--gray); margin-bottom: 4px;">V1.12.0 Stable Version</div>
             <div style="font-weight: 600; font-size: 0.875rem;">Enterprise Edition</div>
         </div>
     </div>
@@ -2111,7 +2115,7 @@
             scenarios.forEach((tc, i) => {
                 list.innerHTML += `
                     <div style="padding: 10px; border-bottom: 1px solid var(--border); background: #f9fafb; border-radius: 8px; margin-bottom: 8px;">
-                        <div style="font-weight: 600; font-size: 0.85rem;">TC-${tc.test_case_number || tc.id || (i + 1)} <span style="color: var(--primary);">[${tc.type || 'Positive'}]</span></div>
+                        <div style="font-weight: 600; font-size: 0.85rem;">TC-${tc.id || tc.test_case_id || tc.test_case_number || (i + 1)} <span style="color: var(--primary);">[${tc.type || 'Positive'}]</span></div>
                         <div style="font-size: 0.85rem; color: var(--gray); margin-top: 4px;">${tc.scenario}</div>
                     </div>
                 `;
@@ -2564,6 +2568,20 @@
                 if (!data.success) throw new Error(data.message || 'Failed to load test cases');
 
                 const testCases = data.test_cases || [];
+                testCases.forEach(tc => {
+                    if (
+                        !tc.field_configs &&
+                        tc.metadata &&
+                        tc.metadata.field_configs
+                    ) {
+                        tc.field_configs =
+                            JSON.parse(
+                                JSON.stringify(
+                                    tc.metadata.field_configs
+                                )
+                            );
+                    }
+                });
                 addToPool(testCases);
                 const suiteName = (data.session_info && data.session_info.session_name)
                     ? data.session_info.session_name
@@ -2761,7 +2779,9 @@
                                 }
                             );
                         });
-
+                        data.test_cases.forEach(tc => {
+                            tc.field_configs = JSON.parse(JSON.stringify(fieldConfigs));
+                        });
                         allCases = allCases.concat(data.test_cases);
                     }
                     else { hasError = true; errMsg = data.error || "Unknown error."; }
@@ -2841,7 +2861,7 @@
                     <label style="display:flex; align-items:flex-start; gap:12px; padding:10px; border-bottom:1px solid var(--border); cursor:pointer; background: white; border-radius: 8px; margin-bottom: 8px; transition: background 0.2s;">
                         <input type="checkbox" class="suite-builder-cb" data-key="${key}" data-index="${i}" checked style="margin-top: 2px;">
                         <div style="flex: 1;">
-                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--dark);">TC-${tc.test_case_number || tc.id || (i + 1)} <span style="color: var(--primary); margin-left: 8px;">[${tc.type}]</span></div>
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--dark);">TC-${tc.id || tc.test_case_id || tc.test_case_number || (i + 1)}<span style="color: var(--primary); margin-left: 8px;">[${tc.type}]</span></div>
                             <div style="font-size: 0.85rem; color: var(--gray); margin-top: 2px;">${tc.scenario}</div>
                         </div>
                     </label>
@@ -3062,13 +3082,13 @@
                     <div style="display: flex; align-items: center; width: 100%; gap: 12px;">
                         <div class="checkbox-col"><input type="checkbox" class="test-case-checkbox" data-index="${i}" checked></div>
                         <div class="testcase-info">
-                            <div class="tc-id">TC-${tc.test_case_number || tc.id || (i + 1)}</div>
+                            <div class="tc-id">TC-${tc.id || tc.test_case_id || tc.test_case_number || (i + 1)}</div>
                             <div class="tc-scenario">${tc.scenario || 'Test Scenario'}</div>
                             ${perfInputs}
                         </div>
                         <div class="category-col"><div class="category-badge ${categoryClass}" title="${categoryText}">${categoryText}</div></div>
                         <div class="expected-col"><div class="expected-badge" title="Expected: ${expectedDisplay}">${expectedDisplay}</div></div>
-                        <div class="status-col"><div class="execution-badge ${executionClass}" id="status-${i}">${executionText}</div></div>
+                        <div class="status-col"><div class="execution-badge ${executionClass}" id="${isPerf ? 'perf-status-' : 'func-status-'}${i}">${executionText}</div></div>
                     </div>
                 `;
                 targetList.appendChild(testCaseCard);
@@ -3134,144 +3154,1332 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
-        async function executeSelectedTests() {
-            if (!activeSuiteCases || activeSuiteCases.length === 0) { showError('No active suite loaded.'); return; }
+        // ============================================================
+        // PRE-EXECUTION VALIDATION
+        // ============================================================
 
-            const selected = Array.from(document.querySelectorAll('#functionalTestCasesList .test-case-checkbox:checked')).map(cb => {
-                const index = cb.dataset.index;
-                return (index >= 0 && index < activeSuiteCases.length) ? activeSuiteCases[index] : null;
-            }).filter(tc => tc !== null);
+        function getFieldConfigsForTestCase(tc) {
 
-            if (!selected.length) { showError('Select at least one functional scenario'); return; }
+            if (
+                tc &&
+                tc.field_configs &&
+                typeof tc.field_configs === 'object'
+            ) {
+                return tc.field_configs;
+            }
 
-            const btn = document.getElementById('executeBtn');
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading-spinner"></span> Executing...';
+            if (
+                tc &&
+                tc.metadata &&
+                tc.metadata.field_configs &&
+                typeof tc.metadata.field_configs === 'object'
+            ) {
+                return tc.metadata.field_configs;
+            }
 
-            const start = performance.now();
-            try {
-                let activeEndpoint = selected[0].endpoint || '/';
-                let activeMethod = selected[0].method || 'GET';
-                let baseUrl = selected[0].baseUrl || selected[0].base_url || 'custom';
-                if (baseUrl === 'N/A' || baseUrl === 'No-Base-URL') baseUrl = 'custom';
+            // Fallback to the current Test Plan configuration.
+            const fieldConfigs = {};
 
-                const res = await fetch('/api/execute-tests', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint: activeEndpoint, method: activeMethod, testCases: selected, environment: 'custom', baseUrl, originalPayload: null, fieldConfigs: {} })
-                });
+            document.querySelectorAll('#fieldTableBody tr').forEach(row => {
 
-                const latency = Math.round(performance.now() - start);
-                if (!res.ok) {
-                    let errorMsg = `Server returned HTTP ${res.status}`;
-                    try { const errorData = await res.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
-                    throw new Error(errorMsg);
+                const fieldCell = row.cells[0];
+
+                if (!fieldCell) return;
+
+                const field = fieldCell.textContent.trim();
+
+                const typeSelect =
+                    row.querySelector('.type-select');
+
+                const requiredSelect =
+                    row.querySelector('.required-select');
+
+                if (!field || !typeSelect || !requiredSelect) {
+                    return;
                 }
 
-                const data = await res.json();
-                if (!data.success) throw new Error(data.error || 'Execution failed');
+                fieldConfigs[field] = {
+                    type: typeSelect.value,
+                    required:
+                        requiredSelect.value === 'required'
+                };
+            });
 
-                lastResults = data.results;
-                lastExecutedTestCases = selected;
-                document.getElementById('exportResultsBtn').style.display = 'inline-flex';
+            return fieldConfigs;
+        }
 
-                const resultsList = document.getElementById('resultsList');
-                resultsList.innerHTML = '';
-                let passed = 0;
 
-                data.results.forEach((r, i) => {
-                    const isPass = r.status === 'pass';
-                    if (isPass) passed++;
+        function getExpectedStatusCodes(expected) {
+            if (!expected) return [];
 
-                    try {
-                        const checkedCheckboxes = Array.from(document.querySelectorAll('#functionalTestCasesList .test-case-checkbox:checked'));
-                        if (checkedCheckboxes[i]) {
-                            const idx = checkedCheckboxes[i].dataset.index;
-                            const badge = document.getElementById(`status-${idx}`);
-                            if (badge) { badge.className = `status-badge status-${isPass ? 'pass' : 'fail'}`; badge.textContent = isPass ? 'Passed' : 'Failed'; }
-                        }
-                    } catch (e) { }
+            const text = Array.isArray(expected)
+                ? expected.join(' ')
+                : String(expected);
 
-                    const item = document.createElement('div');
-                    item.className = 'result-item';
-                    item.style.borderLeft = `4px solid ${isPass ? 'var(--success)' : 'var(--danger)'}`;
-                    const scenarioName = selected[i]?.scenario || r.testCaseId || `Test ${i + 1}`;
+            // Extract only real 3-digit HTTP status codes.
+            return [...new Set(text.match(/\b[1-5]\d{2}\b/g) || [])];
+        }
 
-                    let formattedResponseBody = '(No response body)';
+        function isExpected400(expected) {
+            const codes = getExpectedStatusCodes(expected);
 
-                    if (r.responseBody !== null &&
-                        r.responseBody !== undefined &&
-                        r.responseBody !== '') {
+            // IMPORTANT:
+            // Only exact 400 is considered a validation error.
+            // 404, 401, 403, 409, 415, 429, etc. are NOT validation errors.
+            return codes.includes('400');
+        }
 
-                        try {
-                            const parsedBody = typeof r.responseBody === 'string'
-                                ? JSON.parse(r.responseBody)
-                                : r.responseBody;
 
-                            formattedResponseBody = JSON.stringify(
-                                parsedBody,
-                                null,
-                                2
-                            );
+        function getBrowserDataType(value) {
 
-                        } catch (e) {
-                            formattedResponseBody = String(r.responseBody);
-                        }
+            if (value === null) {
+                return 'null';
+            }
+
+            if (Array.isArray(value)) {
+                return 'array';
+            }
+
+            if (typeof value === 'boolean') {
+                return 'boolean';
+            }
+
+            if (typeof value === 'number') {
+
+                if (Number.isInteger(value)) {
+                    return 'integer';
+                }
+
+                return 'number';
+            }
+
+            if (typeof value === 'object') {
+                return 'object';
+            }
+
+            return 'string';
+        }
+
+
+        function parseValidationInput(input, method) {
+
+            if (input === null || input === undefined) {
+                return {
+                    valid: true,
+                    value: {}
+                };
+            }
+
+            if (typeof input === 'object') {
+                return {
+                    valid: true,
+                    value: input
+                };
+            }
+
+            const text = String(input).trim();
+
+            if (!text) {
+                return {
+                    valid: true,
+                    value: {}
+                };
+            }
+
+            // GET/DELETE query string
+            if (
+                method === 'GET' ||
+                method === 'DELETE'
+            ) {
+
+                if (
+                    text.startsWith('?') ||
+                    text.includes('=')
+                ) {
+
+                    const params = {};
+
+                    let query = text;
+
+                    if (query.includes('?')) {
+                        query = query.split('?')[1];
                     }
 
-                    const safeResponseBody = escapeHtml(formattedResponseBody);
+                    query
+                        .split('&')
+                        .forEach(pair => {
 
-                    const safeDetails = escapeHtml(
-                        r.details || 'No details available'
+                            if (!pair.includes('=')) {
+                                return;
+                            }
+
+                            const [key, ...rest] =
+                                pair.split('=');
+
+                            const rawValue =
+                                rest.join('=');
+
+                            const value =
+                                decodeURIComponent(rawValue);
+
+                            if (value === 'true') {
+                                params[key] = true;
+                            }
+                            else if (value === 'false') {
+                                params[key] = false;
+                            }
+                            else if (
+                                value !== '' &&
+                                !Number.isNaN(Number(value))
+                            ) {
+                                params[key] =
+                                    Number(value);
+                            }
+                            else {
+                                params[key] = value;
+                            }
+                        });
+
+                    return {
+                        valid: true,
+                        value: params
+                    };
+                }
+
+                // Path parameter / plain descriptive input.
+                return {
+                    valid: true,
+                    value: null,
+                    nonPayload: true
+                };
+            }
+
+            // JSON body
+            try {
+
+                return {
+                    valid: true,
+                    value: JSON.parse(text)
+                };
+
+            } catch (e) {
+
+                return {
+                    valid: false,
+                    value: null,
+                    error: 'Invalid JSON payload.'
+                };
+            }
+        }
+
+
+        function getValueFromPath(data, fieldPath) {
+
+            if (
+                data === null ||
+                data === undefined
+            ) {
+                return {
+                    exists: false,
+                    value: undefined
+                };
+            }
+
+            const parts = String(fieldPath).split('.');
+
+            let current = data;
+
+            for (const part of parts) {
+
+                if (
+                    current !== null &&
+                    typeof current === 'object' &&
+                    !Array.isArray(current) &&
+                    Object.prototype.hasOwnProperty.call(
+                        current,
+                        part
+                    )
+                ) {
+
+                    current = current[part];
+                    continue;
+                }
+
+                if (Array.isArray(current)) {
+
+                    // Supports:
+                    // tags.0.id
+                    if (/^\d+$/.test(part)) {
+
+                        const index = Number(part);
+
+                        if (
+                            index >= 0 &&
+                            index < current.length
+                        ) {
+                            current = current[index];
+                            continue;
+                        }
+
+                        return {
+                            exists: false,
+                            value: undefined
+                        };
+                    }
+
+                    // Supports old style:
+                    // tags.id
+                    // by validating against first array element.
+                    if (current.length > 0) {
+
+                        current = current[0];
+
+                        if (
+                            current !== null &&
+                            typeof current === 'object' &&
+                            Object.prototype.hasOwnProperty.call(
+                                current,
+                                part
+                            )
+                        ) {
+                            current = current[part];
+                            continue;
+                        }
+                    }
+                }
+
+                return {
+                    exists: false,
+                    value: undefined
+                };
+            }
+
+            return {
+                exists: true,
+                value: current
+            };
+        }
+
+
+        function validateFieldFormat(value, expectedType) {
+
+            if (
+                typeof value !== 'string'
+            ) {
+                return null;
+            }
+
+            switch (expectedType) {
+
+                case 'email':
+
+                    if (
+                        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                            .test(value)
+                    ) {
+                        return 'Invalid email format.';
+                    }
+
+                    break;
+
+                case 'uuid':
+
+                    if (
+                        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+                            .test(value)
+                    ) {
+                        return 'Invalid UUID format.';
+                    }
+                    break;
+                case 'url':
+                    try {
+                        const url = new URL(value);
+                        if (
+                            url.protocol !== 'http:' &&
+                            url.protocol !== 'https:'
+                        ) {
+                            return 'Only HTTP/HTTPS URLs are allowed.';
+                        }
+                    } catch (e) {
+                        return 'Invalid URL format.';
+                    }
+                    break;
+                case 'date':
+                    if (
+                        Number.isNaN(
+                            Date.parse(value)
+                        )
+                    ) {
+                        return 'Invalid date format.';
+                    }
+                    break;
+                case 'datetime':
+                    if (
+                        Number.isNaN(
+                            Date.parse(value)
+                        )
+                    ) {
+                        return 'Invalid datetime format.';
+                    }
+                    break;
+                case 'phone':
+                    if (
+                        !/^\+?[\d\s\-()]{7,20}$/
+                            .test(value)
+                    ) {
+                        return 'Invalid phone format.';
+                    }
+                    break;
+            }
+            return null;
+        }
+        function validateTestCaseBeforeExecution(tc) {
+            const expected = tc.expected || tc.expected_status || '';
+
+            // Only run UI schema validation for tests that explicitly expect 400.
+            // 401/403/404/409/415/429/etc. must continue to the API.
+            if (!isExpected400(expected)) {
+                return {
+                    checked: false,
+                    invalid: false,
+                    errors: []
+                };
+            }
+
+            const method = String(tc.method || 'GET').toUpperCase();
+            const fieldConfigs = getFieldConfigsForTestCase(tc);
+
+            if (!fieldConfigs || Object.keys(fieldConfigs).length === 0) {
+                return {
+                    checked: false,
+                    invalid: false,
+                    errors: []
+                };
+            }
+
+            const parsed = parseValidationInput(tc.input, method);
+
+            // For path parameters / non-body inputs, don't try to apply body schema.
+            if (parsed.nonPayload) {
+                return {
+                    checked: false,
+                    invalid: false,
+                    errors: []
+                };
+            }
+
+            if (parsed.parseError) {
+                return {
+                    checked: true,
+                    invalid: true,
+                    errors: ['Invalid JSON payload']
+                };
+            }
+
+            const inputData = parsed.data;
+
+            if (
+                inputData === null ||
+                inputData === undefined
+            ) {
+                return {
+                    checked: true,
+                    invalid: true,
+                };
+            }
+
+            const errors = [];
+
+            Object.entries(fieldConfigs).forEach(([fieldPath, config]) => {
+                const required = String(config.required).toLowerCase() === 'true';
+                const expectedType = String(config.type || '').toLowerCase();
+
+                const valueInfo = getValueFromPath(inputData, fieldPath);
+
+                // -----------------------------------------
+                // Missing field
+                // -----------------------------------------
+                if (!valueInfo.exists) {
+                    if (required) {
+                        errors.push(`Required field "${fieldPath}" is missing`);
+                    }
+
+                    // Optional field can be missing.
+                    return;
+                }
+
+                const value = valueInfo.value;
+
+                // -----------------------------------------
+                // Required null
+                // -----------------------------------------
+                if (value === null) {
+                    if (required) {
+                        errors.push(`Required field "${fieldPath}" cannot be null`);
+                    }
+
+                    return;
+                }
+
+                // -----------------------------------------
+                // Empty string
+                // -----------------------------------------
+                if (
+                    typeof value === 'string' &&
+                    value.trim() === '' &&
+                    required
+                ) {
+                    errors.push(`Required field "${fieldPath}" cannot be empty`);
+                    return;
+                }
+
+                // -----------------------------------------
+                // Type validation
+                // -----------------------------------------
+                if (expectedType) {
+                    const actualType = getBrowserDataType(value);
+
+                    let typeMatches = true;
+
+                    switch (expectedType) {
+                        case 'integer':
+                            typeMatches = actualType === 'integer';
+                            break;
+
+                        case 'number':
+                        case 'float':
+                        case 'double':
+                            typeMatches =
+                                actualType === 'integer' ||
+                                actualType === 'number';
+                            break;
+
+                        case 'string':
+                        case 'text':
+                        case 'email':
+                        case 'uuid':
+                        case 'url':
+                        case 'date':
+                        case 'datetime':
+                        case 'phone':
+                        case 'password':
+                            typeMatches = actualType === 'string';
+                            break;
+
+                        case 'boolean':
+                            typeMatches = actualType === 'boolean';
+                            break;
+
+                        case 'array':
+                            typeMatches = actualType === 'array';
+                            break;
+
+                        case 'object':
+                            typeMatches = actualType === 'object';
+                            break;
+
+                        default:
+                            typeMatches = true;
+                    }
+
+                    if (!typeMatches) {
+                        errors.push(
+                            `Field "${fieldPath}" expected type ${expectedType}, received ${actualType}`
+                        );
+                        return;
+                    }
+                }
+
+                // -----------------------------------------
+                // Format validation
+                // -----------------------------------------
+                if (
+                    typeof value === 'string' &&
+                    ['email', 'uuid', 'url', 'date', 'datetime', 'phone'].includes(expectedType)
+                ) {
+                    const formatError = validateFieldFormat(value, expectedType);
+
+                    if (formatError) {
+                        errors.push(
+                            `Field "${fieldPath}": ${formatError}`
+                        );
+                    }
+                }
+            });
+
+            return {
+                checked: true,
+                invalid: errors.length > 0,
+                errors
+            };
+        }
+        function buildPreValidationResult(tc, validationResult) {
+
+            const testCaseId =
+                tc.id ||
+                tc.test_case_id ||
+                'Unknown';
+
+            const expected =
+                tc.expected ||
+                tc.expected_status ||
+                '400';
+
+            const errors =
+                validationResult.errors || [];
+
+            const errorSummary =
+                errors.map(err => `• ${String(err)}`).join('\n');
+
+            // Use the testcase name/scenario as the validation title
+            const scenario =
+                String(
+                    tc.scenario ||
+                    'Validation Error'
+                ).trim();
+
+            // Convert the scenario into title case
+            const validationTitle =
+                scenario
+                    .replace(/[_-]+/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .replace(/\b\w/g, char => char.toUpperCase());
+
+            // Keep the explanatory message
+            let validationMessage =
+                'The request does not match the configured validation rules.';
+
+            const scenarioLower = scenario.toLowerCase();
+
+            if (
+                scenarioLower.includes('null value') ||
+                scenarioLower.includes('null field')
+            ) {
+                validationMessage =
+                    'A null value cannot be given for a required field.';
+            }
+
+            else if (
+                scenarioLower.includes('missing required') ||
+                scenarioLower.includes('required field missing') ||
+                scenarioLower.includes('missing field')
+            ) {
+                validationMessage =
+                    'A required field is missing. Please provide a value.';
+            }
+
+            else if (
+                scenarioLower.includes('empty value') ||
+                scenarioLower.includes('empty field') ||
+                scenarioLower.includes('empty string')
+            ) {
+                validationMessage =
+                    'An empty value cannot be given for a required field.';
+            }
+
+            else if (
+                scenarioLower.includes('type mismatch') ||
+                scenarioLower.includes('invalid data type') ||
+                scenarioLower.includes('wrong data type') ||
+                scenarioLower.includes('datatype')
+            ) {
+                validationMessage =
+                    'The provided value does not match the expected data type.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid email') ||
+                scenarioLower.includes('email format')
+            ) {
+                validationMessage =
+                    'The email value is not in a valid email format.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid uuid') ||
+                scenarioLower.includes('uuid format')
+            ) {
+                validationMessage =
+                    'The value is not a valid UUID.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid url') ||
+                scenarioLower.includes('url format')
+            ) {
+                validationMessage =
+                    'The value is not a valid HTTP/HTTPS URL.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid date') ||
+                scenarioLower.includes('date format')
+            ) {
+                validationMessage =
+                    'The value is not in a valid date format.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid datetime') ||
+                scenarioLower.includes('datetime format')
+            ) {
+                validationMessage =
+                    'The value is not in a valid date-time format.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid phone') ||
+                scenarioLower.includes('phone format')
+            ) {
+                validationMessage =
+                    'The phone number is not in a valid format.';
+            }
+
+            else if (
+                scenarioLower.includes('very long') ||
+                scenarioLower.includes('long value') ||
+                scenarioLower.includes('maximum length') ||
+                scenarioLower.includes('max length')
+            ) {
+                validationMessage =
+                    'The value exceeds the allowed length.';
+            }
+
+            else if (
+                scenarioLower.includes('very large') ||
+                scenarioLower.includes('out of range') ||
+                scenarioLower.includes('large number') ||
+                scenarioLower.includes('range')
+            ) {
+                validationMessage =
+                    'The value is outside the allowed range.';
+            }
+
+            else if (
+                scenarioLower.includes('invalid json') ||
+                scenarioLower.includes('malformed json')
+            ) {
+                validationMessage =
+                    'The request body is not valid JSON.';
+            }
+
+            return {
+                testCaseId,
+                status: 'pass',
+                statusCode: 400,
+                displayStatusCode: '4XX',
+
+                responseBody: JSON.stringify({
+                    error: 'Validation Error',
+                    message: validationMessage,
+                    details: errors
+                }),
+
+                validation_pre_execution: true,
+
+                details:
+                    `❌ Validation Error\n` +
+                    `❌ ${validationTitle}\n` +
+                    `${validationMessage}\n\n` +
+                    `Details:\n` +
+                    `${errorSummary}\n` +
+                    `Expected: ${expected}\n` +
+                    `HTTP Category: 4XX\n` +
+                    `Execution: API request skipped.`
+            };
+        }
+        async function executeSelectedTests() {
+
+            if (
+                !activeSuiteCases ||
+                activeSuiteCases.length === 0
+            ) {
+                showError('No active suite loaded.');
+                return;
+            }
+
+            const selected =
+                Array.from(
+                    document.querySelectorAll(
+                        '#functionalTestCasesList .test-case-checkbox:checked'
+                    )
+                )
+                    .map(cb => {
+
+                        const index =
+                            cb.dataset.index;
+
+                        return (
+                            index >= 0 &&
+                            index < activeSuiteCases.length
+                        )
+                            ? activeSuiteCases[index]
+                            : null;
+
+                    })
+                    .filter(tc => tc !== null);
+
+            if (!selected.length) {
+
+                showError(
+                    'Select at least one functional scenario'
+                );
+
+                return;
+            }
+
+            const btn =
+                document.getElementById(
+                    'executeBtn'
+                );
+
+            const original =
+                btn.innerHTML;
+
+            btn.disabled = true;
+
+            btn.innerHTML =
+                '<span class="loading-spinner"></span> Executing...';
+
+            const start =
+                performance.now();
+
+            try {
+
+                // =====================================================
+                // STEP 1 — PRE-EXECUTION VALIDATION
+                // =====================================================
+
+                const localResults = [];
+
+                const casesForServer = [];
+
+                selected.forEach(tc => {
+
+                    const validation =
+                        validateTestCaseBeforeExecution(tc);
+
+                    console.log(
+                        'PRE-EXECUTION VALIDATION:',
+                        {
+                            testCase:
+                                tc.id ||
+                                tc.test_case_id,
+
+                            scenario:
+                                tc.scenario,
+
+                            validation
+                        }
                     );
 
-                    const testCaseId = r.testCaseId || selected[i]?.id || `TC-${i + 1}`;
+                    if (
+                        validation.checked &&
+                        validation.invalid
+                    ) {
 
-                    const executionDetails =
-                        `Test Case ID: ${escapeHtml(testCaseId)}\n\n` +
-                        `${safeDetails.trim()}\n\n` +
-                        `Response Body:\n` +
-                        `${safeResponseBody}`;
+                        const result =
+                            buildPreValidationResult(
+                                tc,
+                                validation
+                            );
 
-                    item.innerHTML = `
-                        <div class="result-header">
-                            <span class="badge ${isPass ? 'badge-success' : 'badge-danger'}">
-                                ${isPass ? 'PASS' : 'FAIL'}
-                            </span>
+                        localResults.push(result);
 
-                            <span class="badge badge-info">
-                                ${escapeHtml(testCaseId)}
-                            </span>
+                        return;
+                    }
 
-                            <div style="font-weight:600; flex:1">
-                                ${escapeHtml(scenarioName)}
-                            </div>
-
-                            <div class="badge badge-info">
-                                HTTP ${r.statusCode || 'N/A'}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="result-details">${executionDetails}</div>
-                    `;
-                    resultsList.appendChild(item);
+                    // Valid input OR a testcase whose
+                    // behavior cannot be determined
+                    // locally.
+                    casesForServer.push(tc);
                 });
 
-                if (document.getElementById('dash-success')) document.getElementById('dash-success').textContent = `${Math.round((passed / data.results.length) * 100)}%`;
-                if (document.getElementById('dash-failures')) document.getElementById('dash-failures').textContent = data.results.length - passed;
-                if (document.getElementById('dash-latency')) document.getElementById('dash-latency').textContent = `${latency}ms`;
-                showSuccess(`Execution complete: ${passed}/${data.results.length} passed`);
+                // =====================================================
+                // STEP 2 — EXECUTE REMAINING TEST CASES
+                // =====================================================
 
-                let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-                let cleanEndpoint = activeEndpoint;
-                if (!cleanEndpoint.startsWith('/')) cleanEndpoint = '/' + cleanEndpoint;
-                let displayUrl = cleanBase + cleanEndpoint;
+                let serverResults = [];
 
-                addToHistory({ type: 'Functional', endpoint: displayUrl, method: activeMethod, environment: 'custom', total: data.results.length, passed: passed, latency: latency, date: new Date().toLocaleTimeString() });
+                if (casesForServer.length > 0) {
 
-            } catch (e) { showError(`Execution failed: ${e.message}`); }
-            finally { btn.disabled = false; btn.innerHTML = original; lucide.createIcons(); }
+                    const activeEndpoint =
+                        casesForServer[0].endpoint || '/';
+
+                    const activeMethod =
+                        casesForServer[0].method || 'GET';
+
+                    let baseUrl =
+                        casesForServer[0].baseUrl ||
+                        casesForServer[0].base_url ||
+                        'custom';
+
+                    if (
+                        baseUrl === 'N/A' ||
+                        baseUrl === 'No-Base-URL'
+                    ) {
+                        baseUrl = 'custom';
+                    }
+
+                    const res =
+                        await fetch(
+                            '/api/execute-tests',
+                            {
+                                method: 'POST',
+
+                                headers: {
+                                    'Content-Type':
+                                        'application/json'
+                                },
+
+                                body:
+                                    JSON.stringify({
+                                        endpoint:
+                                            activeEndpoint,
+
+                                        method:
+                                            activeMethod,
+
+                                        testCases:
+                                            casesForServer,
+
+                                        environment:
+                                            'custom',
+
+                                        baseUrl,
+
+                                        originalPayload:
+                                            null,
+
+                                        fieldConfigs:
+                                            {}
+                                    })
+                            }
+                        );
+
+                    if (!res.ok) {
+
+                        let errorMsg =
+                            `Server returned HTTP ${res.status}`;
+
+                        try {
+
+                            const errorData =
+                                await res.json();
+
+                            errorMsg =
+                                errorData.error ||
+                                errorMsg;
+
+                        } catch (e) { }
+
+                        throw new Error(
+                            errorMsg
+                        );
+                    }
+
+                    const data =
+                        await res.json();
+
+                    if (!data.success) {
+
+                        throw new Error(
+                            data.error ||
+                            'Execution failed'
+                        );
+                    }
+
+                    serverResults =
+                        data.results || [];
+                }
+
+                // =====================================================
+                // STEP 3 — MERGE RESULTS
+                // =====================================================
+
+                const resultMap =
+                    new Map();
+
+                localResults.forEach(result => {
+
+                    resultMap.set(
+                        result.testCaseId,
+                        result
+                    );
+                });
+
+                serverResults.forEach(result => {
+
+                    resultMap.set(
+                        result.testCaseId,
+                        result
+                    );
+                });
+
+                const finalResults =
+                    selected.map(tc => {
+
+                        const id =
+                            tc.id ||
+                            tc.test_case_id;
+
+                        return (
+                            resultMap.get(id) || {
+                                testCaseId: id,
+                                status: 'fail',
+                                statusCode: 0,
+                                responseBody: '',
+                                details:
+                                    'No execution result returned.'
+                            }
+                        );
+                    });
+
+                // =====================================================
+                // STEP 4 — SAVE RESULT STATE
+                // =====================================================
+
+                lastResults =
+                    finalResults;
+
+                lastExecutedTestCases =
+                    selected;
+
+                document
+                    .getElementById(
+                        'exportResultsBtn'
+                    )
+                    .style.display = 'inline-flex';
+
+                // =====================================================
+                // STEP 5 — DISPLAY RESULTS
+                // =====================================================
+
+                const resultsList =
+                    document.getElementById(
+                        'resultsList'
+                    );
+
+                resultsList.innerHTML = '';
+
+                let passed = 0;
+
+                finalResults.forEach(
+                    (r, i) => {
+
+                        const isPass =
+                            r.status === 'pass';
+
+                        if (isPass) {
+                            passed++;
+                        }
+
+                        // ---------------------------------------------
+                        // Update testcase badge
+                        // ---------------------------------------------
+
+                        try {
+
+                            const resultTestCaseId =
+                                r.testCaseId ||
+                                selected[i]?.id ||
+                                selected[i]?.test_case_id;
+
+                            const testCaseIndex =
+                                activeSuiteCases.findIndex(
+                                    tc =>
+                                        (
+                                            tc.id ||
+                                            tc.test_case_id
+                                        ) === resultTestCaseId
+                                );
+
+                            if (
+                                testCaseIndex !== -1
+                            ) {
+
+                                const badge =
+                                    document.getElementById(
+                                        `func-status-${testCaseIndex}`
+                                    );
+
+                                if (badge) {
+
+                                    badge.className =
+                                        `execution-badge ${isPass
+                                            ? 'status-passed'
+                                            : 'status-failed'
+                                        }`;
+
+                                    badge.textContent =
+                                        isPass
+                                            ? 'Passed'
+                                            : 'Failed';
+                                }
+                            }
+
+                        } catch (e) {
+
+                            console.error(
+                                'Unable to update testcase status:',
+                                e
+                            );
+                        }
+
+                        // ---------------------------------------------
+                        // Result card
+                        // ---------------------------------------------
+
+                        const item =
+                            document.createElement(
+                                'div'
+                            );
+
+                        item.className =
+                            'result-item';
+
+                        item.style.borderLeft =
+                            `4px solid ${isPass
+                                ? 'var(--success)'
+                                : 'var(--danger)'
+                            }`;
+
+                        const scenarioName =
+                            selected[i]?.scenario ||
+                            r.testCaseId ||
+                            `Test ${i + 1}`;
+
+                        let formattedResponseBody =
+                            '(No response body)';
+
+                        if (
+                            r.responseBody !== null &&
+                            r.responseBody !== undefined &&
+                            r.responseBody !== ''
+                        ) {
+
+                            try {
+
+                                const parsedBody =
+                                    typeof r.responseBody === 'string'
+                                        ? JSON.parse(
+                                            r.responseBody
+                                        )
+                                        : r.responseBody;
+
+                                formattedResponseBody =
+                                    JSON.stringify(
+                                        parsedBody,
+                                        null,
+                                        2
+                                    );
+
+                            } catch (e) {
+
+                                formattedResponseBody =
+                                    String(
+                                        r.responseBody
+                                    );
+                            }
+                        }
+
+                        const safeResponseBody =
+                            escapeHtml(
+                                formattedResponseBody
+                            );
+
+                        const safeDetails =
+                            escapeHtml(
+                                r.details ||
+                                'No details available'
+                            );
+
+                        const testCaseId =
+                            r.testCaseId ||
+                            selected[i]?.id ||
+                            `TC-${i + 1}`;
+
+                        /*const preValidationBadge =
+                            r.validation_pre_execution
+                                ? `
+                            <span
+                                class="badge badge-warning"
+                            >
+                                PRE-VALIDATED
+                            </span>
+                          `
+                                : '';
+                            */
+                        const executionDetails =
+                            `${safeDetails.trim()}\n\n` +
+                            `Response Body:\n` +
+                            `${safeResponseBody}`;
+
+                        item.innerHTML = `
+                    <div class="result-header">
+
+                        <span class="badge ${isPass
+                                ? 'badge-success'
+                                : 'badge-danger'
+                            }">
+                            ${isPass
+                                ? 'PASS'
+                                : 'FAIL'
+                            }
+                        </span>
+
+
+                        <span class="badge badge-info">
+                            ${escapeHtml(
+                                testCaseId
+                            )}
+                        </span>
+
+                        <div
+                            style="
+                                font-weight:600;
+                                flex:1
+                            "
+                        >
+                            ${escapeHtml(
+                                scenarioName
+                            )}
+                        </div>
+
+                        <div class="badge badge-info">
+    HTTP ${escapeHtml(
+                                r.displayStatusCode ||
+                                r.statusCode ||
+                                'N/A'
+                            )}
+</div>
+
+                    </div>
+
+                    <div class="result-details">
+                        ${executionDetails}
+                    </div>
+                `;
+
+                        resultsList.appendChild(
+                            item
+                        );
+                    }
+                );
+
+                // =====================================================
+                // STEP 6 — DASHBOARD METRICS
+                // =====================================================
+
+                if (
+                    document.getElementById(
+                        'dash-success'
+                    )
+                ) {
+
+                    document.getElementById(
+                        'dash-success'
+                    ).textContent =
+                        `${Math.round(
+                            (passed /
+                                finalResults.length) *
+                            100
+                        )}%`;
+                }
+
+                if (
+                    document.getElementById(
+                        'dash-failures'
+                    )
+                ) {
+
+                    document.getElementById(
+                        'dash-failures'
+                    ).textContent =
+                        finalResults.length -
+                        passed;
+                }
+
+                const latency =
+                    Math.round(
+                        performance.now() -
+                        start
+                    );
+
+                if (
+                    document.getElementById(
+                        'dash-latency'
+                    )
+                ) {
+
+                    document.getElementById(
+                        'dash-latency'
+                    ).textContent =
+                        `${latency}ms`;
+                }
+
+                showSuccess(
+                    `Execution complete: ` +
+                    `${passed}/${finalResults.length} passed`
+                );
+
+                // =====================================================
+                // STEP 7 — HISTORY
+                // =====================================================
+
+                let cleanBase =
+                    baseUrl.endsWith('/')
+                        ? baseUrl.slice(0, -1)
+                        : baseUrl;
+
+                let cleanEndpoint =
+                    activeEndpoint;
+
+                if (
+                    !cleanEndpoint.startsWith('/')
+                ) {
+                    cleanEndpoint =
+                        '/' + cleanEndpoint;
+                }
+
+                const displayUrl =
+                    cleanBase +
+                    cleanEndpoint;
+
+                addToHistory({
+                    type: 'Functional',
+                    endpoint: displayUrl,
+                    method: activeMethod,
+                    environment: 'custom',
+                    total:
+                        finalResults.length,
+                    passed,
+                    latency,
+                    date:
+                        new Date()
+                            .toLocaleTimeString()
+                });
+
+            } catch (e) {
+
+                console.error(
+                    'Execution failed:',
+                    e
+                );
+
+                showError(
+                    `Execution failed: ${e.message}`
+                );
+
+            } finally {
+
+                btn.disabled = false;
+
+                btn.innerHTML =
+                    original;
+
+                lucide.createIcons();
+            }
         }
 
         function addToHistory(runData) {
@@ -3471,6 +4679,208 @@
                     continue;
                 }
 
+
+                // ---------------------------------------------------------
+                // CACHING
+                // ---------------------------------------------------------
+
+                if (performanceConfig.type === 'caching') {
+
+                    console.log(
+                        'CACHING CONFIG:',
+                        performanceConfig
+                    );
+
+                    try {
+
+                        const res = await fetch('/api/run-performance', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                testCase: tc,
+                                endpoint: tc.endpoint || '/',
+                                baseUrl: tc.baseUrl || tc.base_url,
+                                performanceConfig: performanceConfig
+                            })
+                        });
+
+                        if (!res.ok) {
+
+                            let errorMsg = `Server returned HTTP ${res.status}`;
+
+                            try {
+                                const errorData = await res.json();
+                                errorMsg = errorData.error || errorMsg;
+                            } catch (e) { }
+
+                            throw new Error(errorMsg);
+                        }
+
+                        const data = await res.json();
+
+                        if (!data.success) {
+                            throw new Error(data.error || 'Caching test failed');
+                        }
+
+                        const metrics = data.metrics || {};
+                        const sampleOutput = data.sample_output || 'N/A';
+                        const failureDetails = data.failure_details || [];
+
+                        const isPass =
+                            Number(metrics.failures || 0) === 0;
+
+                        if (isPass) {
+                            passed++;
+                        }
+
+                        totalReqs += Number(
+                            metrics.requests_made || 0
+                        );
+
+                        totalFails += Number(
+                            metrics.failures || 0
+                        );
+
+                        let cleanBase =
+                            (tc.baseUrl || tc.base_url || '').replace(/\/$/, '');
+
+                        let tcEndpoint =
+                            tc.endpoint || '/';
+
+                        if (!tcEndpoint.startsWith('/')) {
+                            tcEndpoint = '/' + tcEndpoint;
+                        }
+
+                        const displayUrl =
+                            cleanBase + tcEndpoint;
+
+                        let failureText = '';
+
+                        if (
+                            failureDetails.length > 0
+                        ) {
+                            failureText =
+                                `\n\n❌ Failure Reasons:\n• ` +
+                                failureDetails.join('\n• ');
+                        }
+
+                        const details = `
+Caching Test Execution Complete
+Target: ${displayUrl} [${tc.method || 'GET'}]
+Scenario: ${tc.scenario}
+Caching Configuration: ${performanceConfig.value}
+
+Metrics:
+• Total Requests: ${metrics.requests_made || 0}
+• Failures: ${metrics.failures || 0}
+• Average Latency: ${metrics.avg_ms || 0} ms
+• Max Latency: ${metrics.max_ms || 0} ms${failureText}
+
+Actual Output:
+${sampleOutput}
+`;
+
+                        const item =
+                            document.createElement('div');
+
+                        item.className = 'result-item';
+
+                        item.style.borderLeft =
+                            `4px solid ${isPass
+                                ? 'var(--success)'
+                                : 'var(--danger)'
+                            }`;
+
+                        item.innerHTML = `
+            <div class="result-header">
+
+                <span class="badge ${isPass
+                                ? 'badge-success'
+                                : 'badge-danger'
+                            }">
+                    ${isPass ? 'PASS' : 'FAIL'}
+                </span>
+
+                <div style="font-weight:600; flex:1">
+                    TC-${tc.id || tc.test_case_id || tc.test_case_number}
+                    - ${tc.scenario}
+                </div>
+
+                <div
+                    class="badge"
+                    style="background:#f3e8ff;color:#6b21a8;"
+                >
+                    PERFORMANCE
+                </div>
+
+            </div>
+
+            <div class="result-details">
+                ${details}
+            </div>
+        `;
+
+                        perfResultsList.appendChild(item);
+                        const cachingBadge = document.getElementById(
+                            `status-${tcIndex}`
+                        );
+
+                        if (cachingBadge) {
+                            cachingBadge.className =
+                                `execution-badge ${isPass
+                                    ? 'status-passed'
+                                    : 'status-failed'
+                                }`;
+
+                            cachingBadge.textContent =
+                                isPass
+                                    ? 'Passed'
+                                    : 'Failed';
+                        }
+                        continue;
+                    }
+                    catch (e) {
+
+                        const item =
+                            document.createElement('div');
+
+                        item.className = 'result-item';
+
+                        item.style.borderLeft =
+                            '4px solid var(--danger)';
+
+                        item.innerHTML = `
+            <div class="result-header">
+
+                <span class="badge badge-danger">
+                    ERROR
+                </span>
+
+                <div style="font-weight:600; flex:1">
+                    TC-${tc.id || tc.test_case_id || tc.test_case_number}
+                    - ${tc.scenario}
+                </div>
+
+            </div>
+
+            <div class="result-details">
+                Caching execution failed: ${e.message}
+            </div>
+        `;
+
+                        perfResultsList.appendChild(item);
+
+                        continue;
+                    }
+                }
+
+
+                // ---------------------------------------------------------
+                // NORMAL LOCUST CONFIGURATION
+                // ---------------------------------------------------------
+
                 const users = performanceConfig.value;
                 const spawnRate = performanceConfig.spawnRate;
                 const runTime = performanceConfig.runTime;
@@ -3486,6 +4896,7 @@
                     runTime === null ||
                     runTime === ''
                 ) {
+
                     showError(
                         `Performance configuration is missing for scenario: ${tc.scenario}`
                     );
@@ -3504,7 +4915,7 @@
                 if (baseUrl === 'N/A' || baseUrl === 'No-Base-URL') baseUrl = 'custom';
 
                 if (baseUrl === 'custom' || baseUrl === 'mock') {
-                    showError(`Scenario TC-${tc.test_case_number || tc.id} lacks a valid Base URL. Locust cannot attack a mock environment.`);
+                    showError(`Scenario TC-${tc.id || tc.test_case_id || tc.test_case_number} lacks a valid Base URL. Locust cannot attack a mock environment.`);
                     continue;
                 }
                 console.log("TEST CASE:", tc);
@@ -3545,7 +4956,7 @@
                     if (isPass) passed++;
 
                     if (tcIndex !== -1) {
-                        const badge = document.getElementById(`status-${tcIndex}`);
+                        const badge = document.getElementById(`perf-status-${tcIndex}`);
                         if (badge) { badge.className = `execution-badge status-${isPass ? 'passed' : 'failed'}`; badge.textContent = isPass ? 'Passed' : 'Failed'; }
                     }
 
@@ -3570,7 +4981,7 @@
                     item.innerHTML = `
                         <div class="result-header">
                             <span class="badge ${isPass ? 'badge-success' : 'badge-danger'}">${isPass ? 'PASS' : 'FAIL'}</span>
-                            <div style="font-weight:600; flex:1">TC-${tc.test_case_number || tc.id} - ${tc.scenario}</div>
+                            <div style="font-weight:600; flex:1">TC-${tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div>
                             <div class="badge" style="background: #f3e8ff; color: #6b21a8;">PERFORMANCE</div>
                         </div>
                         <div class="result-details">${details}</div>
@@ -3584,7 +4995,7 @@
                     const item = document.createElement('div');
                     item.className = 'result-item';
                     item.style.borderLeft = `4px solid var(--danger)`;
-                    item.innerHTML = `<div class="result-header"><span class="badge badge-danger">ERROR</span><div style="font-weight:600; flex:1">TC-${tc.test_case_number || tc.id} - ${tc.scenario}</div></div><div class="result-details">Execution failed: ${e.message}</div>`;
+                    item.innerHTML = `<div class="result-header"><span class="badge badge-danger">ERROR</span><div style="font-weight:600; flex:1">TC-${tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div></div><div class="result-details">Execution failed: ${e.message}</div>`;
                     perfResultsList.appendChild(item);
                 }
             }

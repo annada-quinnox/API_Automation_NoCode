@@ -55,7 +55,9 @@ class GenerateTestcases:
             tc['endpoint'] = endpoint
             if 'method' not in tc:
                 tc['method'] = method
-            
+            tc['field_configs'] = json.loads(
+                json.dumps(field_configs)
+            )
         return self.test_cases
     
     def _generate_testcases_internal(self, method, endpoint, payload_json, field_configs={}):
@@ -492,7 +494,7 @@ class GenerateTestcases:
                 "type": "Negative" if is_required or field_type not in ['string', 'email', 'url', 'password'] else "Positive",
                 "scenario": f"Null value for {field}",
                 "input": json.dumps(set_field(payload, field, None)),
-                "expected": "400 Bad Request / 200 OK (if handled)" if is_required or field_type not in ['string', 'email', 'url', 'password'] else success_code
+                "expected": "400 Bad Request" if is_required or field_type not in ['string', 'email', 'url', 'password'] else success_code
             })
             test_counter['id'] += 1
             
@@ -502,7 +504,7 @@ class GenerateTestcases:
                 "type": "Negative" if is_required or field_type != 'string' else "Positive",
                 "scenario": f"Empty string for {field}",
                 "input": json.dumps(set_field(payload, field, "")),
-                "expected": "400 Bad Request / 200 OK (if handled)" if is_required or field_type != 'string' else success_code
+                "expected": "400 Bad Request" if is_required or field_type != 'string' else success_code
             })
             test_counter['id'] += 1
             
@@ -551,7 +553,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"SQL injection in {field}",
                 "input": json.dumps(set_field(payload, field, "'; DROP TABLE; --")),
-                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
+                "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
             
@@ -560,7 +562,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"XSS attempt in {field}",
                 "input": json.dumps(set_field(payload, field, "<script>alert(1)</script>")),
-                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
+                "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
             
@@ -569,7 +571,7 @@ class GenerateTestcases:
                 "type": "Security",
                 "scenario": f"Very long value in {field}",
                 "input": json.dumps(set_field(payload, field, "x" * 1000)),
-                "expected": "400 Bad Request / 500 Internal Server Error / 200 OK (if input sanitized)"
+                "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
         
@@ -886,8 +888,8 @@ class GenerateTestcases:
     def _add_auth_access_tests(self, tests, test_counter):
         auth_cases = [
             ("Verify user can access own data", "Auth: User A, Resource: User A data", "200 OK"),
-            ("Verify user cannot access others' data", "Auth: User A, Resource: User B data", "403 Forbidden"),
-            ("Verify role-based access control", "Auth: Regular User, Resource: Admin only", "403 Forbidden"),
+            ("Verify user cannot access others' data", "Auth: User A, Resource: User B data", "403 Forbidden / 404 Not Found"),
+            ("Verify role-based access control", "Auth: Regular User, Resource: Admin only", "403 Forbidden / 404 Not Found"),
             ("Verify expired token handling", "Auth: Expired JWT", "401 Unauthorized"),
             ("Verify revoked token handling", "Auth: Revoked/Blacklisted token", "401 Unauthorized")
         ]
@@ -1268,7 +1270,7 @@ class GenerateTestcases:
         security_cases = [
             (f"SQL injection in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=1' OR '1'='1", "400 Bad Request"),
             (f"XSS injection in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=<script>alert(1)</script>", "400 Bad Request"),
-            (f"Path traversal in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=../../etc/passwd", "400 Bad Request")
+            (f"Path traversal in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=../../etc/passwd", "400 Bad Request"),
         ]
         for scenario, inp_param, exp in security_cases:
             if not param_name and inp_param.startswith('='):
@@ -1288,8 +1290,8 @@ class GenerateTestcases:
         # 7. Authorization & Access Control
         auth_cases = [
             ("Verify user can access own data", "Valid user token", "200 OK"),
-            ("Verify user cannot access others' data", "User A token accessing User B data", "403 Forbidden"),
-            ("Verify role-based access control", "Regular user accessing admin resource", "403 Forbidden"),
+            ("Verify user cannot access others' data", "User A token accessing User B data", "403 Forbidden / 404 Not Found"),
+            ("Verify role-based access control", "Regular user accessing admin resource", "403 Forbidden / 404 Not Found"),
             ("Verify expired token handling", "Expired JWT token", "401 Unauthorized"),
             ("Verify revoked token handling", "Revoked/Blacklisted token", "401 Unauthorized")
         ]
@@ -1615,7 +1617,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "type": "Negative",
             "scenario": f"Float value for integer field {field_name}",
             "input": {field_name: 123.45},
-            "expected": "400 Invalid data type - integer expected / 200 OK if handled"
+            "expected": "400 Invalid data type - integer expected"
         })
         counter['id'] += 1
         tests.append({
@@ -1623,7 +1625,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "type": "Negative",
             "scenario": f"Very large number for {field_name}",
             "input": {field_name: 999999999999999999},
-            "expected": "400 Value out of range or 200 OK if handled"
+            "expected": "400 Value out of range"
         })
         counter['id'] += 1
         

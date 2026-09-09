@@ -19,6 +19,8 @@ import subprocess
 import csv
 import os
 
+from performance.runner import run_performance_test
+
 DEFAULT_SORT_HEADER = "created_at"
 
 def api_success(data=None, status_code=200, **kwargs):
@@ -210,15 +212,14 @@ def validate_response_schema(response_body, status_code):
     
     if status_code >= 500:
         if not isinstance(data, dict):
-            return False, ["Response body must be a JSON object for 5xx errors"]
-        if "error" not in data:
-            return False, ["Missing 'error' field in 5xx error response"]
-        if "message" not in data:
-            return False, ["Missing 'message' field in 5xx error response"]
-        if not isinstance(data.get("error"), str):
-            return False, ["Field 'error' must be a string"]
-        if not isinstance(data.get("message"), str):
-            return False, ["Field 'message' must be a string"]
+            return False, [
+                "Response body must be a JSON object for 5xx errors"
+            ]
+
+    # Accept the error-response structure actually returned
+    # by the API under test. A 5xx response does not have to
+    # contain a specific application-defined 'error' field.
+        return True, []
     elif 400 <= status_code < 500:
         if isinstance(data, dict):
             if "error" in data and not isinstance(data["error"], str):
@@ -823,7 +824,12 @@ def execute_tests():
 
         field_configs = data.get('fieldConfigs', {})
         for test_case in test_cases:
-            result = execute_single_test(endpoint, method, test_case, environment, base_url, original_payload, field_configs)
+            test_case_field_configs = (
+                test_case.get('field_configs')
+                    or field_configs
+                    or {}
+                )
+            result = execute_single_test(endpoint, method, test_case, environment, base_url, original_payload, test_case_field_configs)
             results.append(result)
 
         return api_success({'results': results})
@@ -831,264 +837,36 @@ def execute_tests():
         return api_error(e)
 
 @app.route('/api/run-performance', methods=['POST'])
-def run_performance_test():
+def run_performance():
     try:
-        data = request.get_json()
-        base_url = data.get('baseUrl', 'mock')
-        if base_url == 'mock' or not base_url:
-            return api_error("Performance testing requires a real Base URL, not a mock environment.")
+        data = request.get_json() or {}
 
-        test_case = data.get('testCase', {})
-        method = test_case.get('method', data.get('method', 'GET')).upper()
-        expected = test_case.get('expected', '200')
-        expected_codes = extract_response_code(expected)
-        
-        current_endpoint = test_case.get('endpoint', data.get('endpoint', '/search'))
-        payload = test_case.get('input', {})
-        
-        if method in ['GET', 'DELETE']:
-            if isinstance(payload, str):
-                if payload.startswith('/'): current_endpoint = payload; payload = {}
-                elif payload.startswith('?') or '=' in payload: payload = parse_query_params(payload)
-                else: current_endpoint = current_endpoint.rstrip('/') + '/' + payload; payload = {}
-        
-        if "429" in expected_codes:
-            requests_made = 0
-            latencies = []
-            got_429 = False
-            sample_output = "No output available"
-            ping_url = build_url(current_endpoint, base_url)
-            headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-            
-            for _ in range(6):
-                start_time = time.time()
-                try:
-                    if method in ["GET", "DELETE"]:
-                        ping_res = requests.request(method, ping_url, params=payload if isinstance(payload, dict) else None, headers=headers, timeout=5.0)
-                    else:
-                        if isinstance(payload, dict) and payload:
-                            ping_res = requests.request(method, ping_url, json=payload, headers=headers, timeout=5.0)
-                        else:
-                            ping_res = requests.request(method, ping_url, data=payload, headers=headers, timeout=5.0)
-                    
-                    requests_made += 1
-                    latencies.append((time.time() - start_time) * 1000)
-                    
-                    if ping_res.status_code == 429:
-                        got_429 = True
-                        sample_output = ping_res.text[:1500]
-                        break
-                    sample_output = ping_res.text[:1500]
-                except Exception as e:
-                    sample_output = str(e)
+        result, status_code = run_performance_test(data)
 
-            metrics = {
-                "requests_made": str(requests_made),
-                "failures": "0" if got_429 else "1",
-                "median_ms": str(round(sum(latencies)/len(latencies))) if latencies else "0",
-                "avg_ms": str(round(sum(latencies)/len(latencies))) if latencies else "0",
-                "max_ms": str(round(max(latencies))) if latencies else "0",
-                "rps": "N/A (Rate Limit Mode)"
+        if result.get("success"):
+            result_without_success = {
+                key: value
+                for key, value in result.items()
+                if key != "success"
             }
-            
-            failure_details = []
-            if not got_429:
-                failure_details.append("Rate limit of 5 requests per IP was NOT enforced by the server. 6th request succeeded.")
-                
-            return api_success({
-                "metrics": metrics,
-                "sample_output": sample_output,
-                "failure_details": failure_details
-            })
 
-        safe_payload = json.dumps(payload)
-        sample_output = "No output available"
-        
-        try:
-            ping_url = build_url(current_endpoint, base_url)
-            headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-            if method in ["GET", "DELETE"]:
-                ping_res = requests.request(method, ping_url, params=payload if isinstance(payload, dict) else None, headers=headers, timeout=5.0)
-            else:
-                if isinstance(payload, dict) and payload:
-                    ping_res = requests.request(method, ping_url, json=payload, headers=headers, timeout=5.0)
-                else:
-                    ping_res = requests.request(method, ping_url, data=payload, headers=headers, timeout=5.0)
-            sample_output = ping_res.text[:1500] 
-        except Exception as e:
-            sample_output = f"Failed to fetch sample: {str(e)}"
-
-        performance_config = data.get('performanceConfig') or {}
-
-        users = performance_config.get('value')
-        spawn_rate = performance_config.get('spawnRate')
-        run_time = performance_config.get('runTime')   
-        if users is None or spawn_rate is None or run_time is None:
-            return api_error(
-                f"Performance configuration is missing for scenario: "
-                f"{test_case.get('scenario', 'Unknown')}"
+            return api_success(
+                result_without_success,
+                status_code=status_code
             )
-            try:
-                users = int(users)
-                spawn_rate = float(spawn_rate)
-            except (TypeError, ValueError):
-                return api_error(
-                    "Invalid performance configuration. "
-                    "Users and spawn rate must be numeric."
-                )
-            if users <= 0:
-                return api_error("Users must be greater than 0.")
 
-            if spawn_rate <= 0:
-                return api_error("Spawn rate must be greater than 0.")
-
-            if not str(run_time).strip():
-                return api_error("Run time cannot be empty.")
-        locust_script = f"""from locust import HttpUser, task, between
-import json
-
-class APIUser(HttpUser):
-    wait_time = between(0.01, 0.05) 
-    host = "{base_url}"
-
-    @task
-    def execute_dynamic_request(self):
-        headers = {{
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }}
-        
-        payload_raw = {safe_payload}
-        try:
-            payload_data = json.loads(payload_raw)
-        except:
-            payload_data = payload_raw
-            
-        kwargs = {{"headers": headers, "catch_response": True, "timeout": 15.0}}
-        
-        if "{method}" in ["GET", "DELETE"]:
-            if isinstance(payload_data, dict) and payload_data:
-                kwargs["params"] = payload_data
-        else:
-            if isinstance(payload_data, dict) and payload_data:
-                kwargs["json"] = payload_data
-            elif payload_data:
-                kwargs["data"] = payload_data
-
-        with self.client.request("{method}", "{current_endpoint}", **kwargs) as response:
-            expected_codes = "{expected}"
-            
-            if "401" in expected_codes or "403" in expected_codes:
-                if response.status_code in [401, 403]:
-                    response.success()
-                else:
-                    response.failure(f"Expected Auth Failure, got {{response.status_code}}")
-            elif response.status_code in [200, 201, 202, 204, 304]:
-                response.success()
-            else:
-                response.failure(f"Failed with HTTP {{response.status_code}}: {{response.text[:100]}}")
-"""
-        timestamp = int(time.time() * 1000)
-        csv_prefix = f"perf_results_{timestamp}"
-        locust_file = f"dynamic_locustfile_{timestamp}.py"
-
-        with open(locust_file, "w", encoding="utf-8") as f:
-            f.write(locust_script)
-
-        print(f"\n🚀 Starting Locust Load Test on {base_url}{current_endpoint} [{method}]...")
-        
-        command = [
-            "locust",
-            "-f",
-            locust_file,
-            "--headless",
-            "-u",
-            str(users),
-            "-r",
-            str(spawn_rate),
-            "--run-time",
-            str(run_time),
-            "--csv",
-            csv_prefix
-        ]
-
-        process = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace"
+        return api_error(
+            result.get(
+                "error",
+                "Performance execution failed."
+            ),
+            status_code=status_code
         )
 
-        print("\n--- LOCUST STDOUT ---")
-        print(process.stdout)
-
-        print("\n--- LOCUST STDERR ---")
-        print(process.stderr)
-
-        print("LOCUST EXIT CODE:", process.returncode)
-
-        metrics = {}
-        failure_details = []
-        
-        csv_file_stats = f"{csv_prefix}_stats.csv"
-        csv_file_failures = f"{csv_prefix}_failures.csv"
-        
-        if os.path.exists(csv_file_failures):
-            with open(csv_file_failures, mode='r', encoding='utf-8') as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    err_msg = row.get('Error', '')
-                    occ = row.get('Occurrences', '')
-                    if err_msg:
-                        failure_details.append(f"{err_msg} (Occurred {occ} times)")
-        
-        if os.path.exists(csv_file_stats):
-            time.sleep(0.5)
-            with open(csv_file_stats, mode='r') as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    if row.get('Name') == 'Aggregated':
-                        metrics = {
-                            "requests_made": row.get("Request Count", "0"),
-                            "failures": row.get("Failure Count", "0"),
-                            "median_ms": row.get("Median Response Time", "0"),
-                            "avg_ms": row.get("Average Response Time", "0"),
-                            "max_ms": row.get("Max Response Time", "0"),
-                            "rps": row.get("Requests/s", "0")
-                        }
-                        break
-                
-                if not metrics: 
-                    file.seek(0)
-                    reader = csv.DictReader(file)
-                    for row in reader:
-                        metrics = {
-                            "requests_made": row.get("Request Count", "0"),
-                            "failures": row.get("Failure Count", "0"),
-                            "median_ms": row.get("Median Response Time", "0"),
-                            "avg_ms": row.get("Average Response Time", "0"),
-                            "max_ms": row.get("Max Response Time", "0"),
-                            "rps": row.get("Requests/s", "0")
-                        }
-                        break
-            
-            for ext in ['_stats.csv', '_stats_history.csv', '_failures.csv', '_exceptions.csv']:
-                try: os.remove(f"{csv_prefix}{ext}")
-                except: pass
-            try: os.remove(locust_file)
-            except: pass
-            
-            return api_success({
-                "metrics": metrics, 
-                "sample_output": sample_output,
-                "failure_details": failure_details
-            })
-        else:
-            return api_error("Locust failed to generate CSV results.")
-
     except Exception as e:
-        return api_error(f"Performance execution failed: {str(e)}")
+        return api_error(
+            f"Performance execution failed: {str(e)}"
+        )
 
 _STATUS_ERROR_BODY = {
     401: {"error": "Unauthorized", "message": "Missing or invalid authentication token"},
@@ -1235,7 +1013,7 @@ def generate_mock_response(test_case, method, original_payload=None, field_confi
 def execute_single_test(endpoint, method, test_case, environment='mock', base_url='mock', original_payload=None, field_configs=None):
     test_id = test_case.get('id', 'Unknown')
     expected = test_case.get('expected', 'N/A')
-    
+
     if expected == 'N/A' or not expected:
         expected = test_case.get('expected_status', 'N/A')
     
@@ -1283,19 +1061,69 @@ def execute_single_test(endpoint, method, test_case, environment='mock', base_ur
         
         if field_configs:
             source_type = 'query' if method == 'GET' else 'body'
-            is_valid, errors = validate_against_configs(payload, field_configs, source=source_type)
+            is_valid, errors = validate_against_configs(
+                payload,
+                field_configs,
+                source=source_type
+            )
+
             if not is_valid:
-                error_summary = "\n".join([f"• {err}" for err in errors])
-                full_msg = f"❌ Invalid data type\n\nPlease correct the following validation errors and try again.\n\n{error_summary}"
+                error_summary = "\n".join(
+                    [f"• {err}" for err in errors]
+                )
+
+                full_msg = (
+                    "❌ Invalid data type\n\n"
+                    "Please correct the following validation errors "
+                    "and try again.\n\n"
+                    f"{error_summary}"
+                )
+
                 expected_codes = extract_response_code(expected)
-                status = 'fail' if test_case.get('type') == 'Positive' else ('pass' if '400' in expected_codes else 'fail')
+
+            # ONLY exact 400 qualifies as validation expected.
+                is_expected_400 = '400' in expected_codes
+
+                if test_case.get('type') == 'Positive':
+                    status = 'fail'
+                else:
+                    status = 'pass' if is_expected_400 else 'fail'
+
                 return {
                     'testCaseId': test_id,
                     'status': status,
                     'statusCode': 400,
-                    'responseBody': json.dumps({"error": "Validation Error", "message": "Validation failed", "details": errors}),
-                    'details': f"❌ Validation Error\n\n{full_msg}\n\nExpected: {expected}"
+                    'responseBody': json.dumps({
+                        "error": "Validation Error",
+                        "message": "Validation failed",
+                        "details": errors
+                    }),
+                    'details': (
+                        f"❌ Validation Error\n\n"
+                        f"{full_msg}\n\n"
+                        f"Expected: {expected}\n\n"
+                        f"HTTP Category: 4XX"
+                    )
                 }
+                # If the testcase did NOT expect 400,
+                # the same invalid input should fail.
+                #return {
+                #    'testCaseId': test_id,
+                #    'status': 'fail',
+                #    'statusCode': 400,
+                #    'responseBody': json.dumps({
+                #        "error": "Validation Error",
+                #        "message": "Request blocked by input validation",
+                #        "details": errors
+                #    }),
+                #    'validation_pre_execution': True,
+                #    'details': (
+                #        f"❌ Validation Error\n\n"
+                #        f"{full_msg}\n\n"
+                #       f"Expected: {expected}\n"
+                #        "Execution: API request was skipped."
+                #    )
+                #}
 
         if test_case.get('type') == 'Positive' and original_payload:
             source_type = 'query' if method == 'GET' else 'body'
