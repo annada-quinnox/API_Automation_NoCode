@@ -78,7 +78,7 @@ class GenerateTestcases:
         elif method.upper() == 'PATCH':
             testcases = self._generate_patch_testcases(endpoint, testcases, counter, payload, field_configs)
         elif method.upper() == 'GET':
-            testcases = self._generate_get_testcases(endpoint, testcases, counter, payload)
+            testcases = self._generate_get_testcases(endpoint, testcases, counter, payload, field_configs)
         else:
             testcases = self._generate_default_testcases(method, payload)
         
@@ -609,7 +609,7 @@ class GenerateTestcases:
             return self._generate_payload_based_testcases(endpoint, testcases, counter, payload, field_configs, "PATCH")
         return [{"id": "PATCH_01", "type": "Positive", "scenario": "Partial update", "input": "Valid JSON", "expected": "200 OK"}]
     
-    def _generate_get_testcases(self, endpoint, testcases, counter, payload):
+    def _generate_get_testcases(self, endpoint, testcases, counter, payload, field_configs={}):
         tests = []
         test_counter = {"id": 1}
         
@@ -642,6 +642,9 @@ class GenerateTestcases:
         
         # 8. Compatibility
         self._add_compatibility_tests(tests, test_counter)
+
+        for tc in tests:
+            tc["field_configs"] = field_configs
         
         return tests
 

@@ -5072,31 +5072,37 @@
 
         function getFieldConfigsForTestCase(tc) {
 
+            // 1. Testcase-level configuration
             if (
                 tc &&
                 tc.field_configs &&
-                typeof tc.field_configs === 'object'
+                typeof tc.field_configs === 'object' &&
+                Object.keys(tc.field_configs).length > 0
             ) {
                 return tc.field_configs;
             }
 
+            // 2. Metadata-level configuration
             if (
                 tc &&
                 tc.metadata &&
                 tc.metadata.field_configs &&
-                typeof tc.metadata.field_configs === 'object'
+                typeof tc.metadata.field_configs === 'object' &&
+                Object.keys(tc.metadata.field_configs).length > 0
             ) {
                 return tc.metadata.field_configs;
             }
 
-            // Fallback to the current Test Plan configuration.
+            // 3. Always fall back to the current Test Plan configuration
             const fieldConfigs = {};
 
             document.querySelectorAll('#fieldTableBody tr').forEach(row => {
 
                 const fieldCell = row.cells[0];
 
-                if (!fieldCell) return;
+                if (!fieldCell) {
+                    return;
+                }
 
                 const field = fieldCell.textContent.trim();
 
@@ -5106,7 +5112,11 @@
                 const requiredSelect =
                     row.querySelector('.required-select');
 
-                if (!field || !typeSelect || !requiredSelect) {
+                if (
+                    !field ||
+                    !typeSelect ||
+                    !requiredSelect
+                ) {
                     return;
                 }
 
@@ -5461,6 +5471,16 @@
             const method = String(tc.method || 'GET').toUpperCase();
             const fieldConfigs = getFieldConfigsForTestCase(tc);
 
+            console.log('VALIDATION PRE-CHECK:', {
+                id: tc.id,
+                scenario: tc.scenario,
+                method: method,
+                expected: tc.expected,
+                expected_status: tc.expected_status,
+                fieldConfigs: fieldConfigs,
+                input: tc.input
+            });
+
             if (!fieldConfigs || Object.keys(fieldConfigs).length === 0) {
                 return {
                     checked: false,
@@ -5489,6 +5509,15 @@
             }
 
             const inputData = parsed.data;
+
+            console.log('VALIDATION INPUT DEBUG:', {
+                method,
+                input: tc.input,
+                expected,
+                fieldConfigs,
+                parsed,
+                inputData
+            });
 
             if (
                 inputData === null ||
