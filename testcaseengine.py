@@ -905,21 +905,45 @@ class GenerateTestcases:
 
     def _add_performance_reliability_tests(self, tests, test_counter):
         perf_cases = [
-            ("Verify response time under load", "100 concurrent users", "Average response time < 1s"),
-            ("Verify API supports concurrent requests", "Multiple simultaneous GETs", "No deadlocks, all requests succeed"),
-            ("Verify rate limiting behavior", ">100 requests per minute", "429 Too Many Requests"),
-            ("Verify caching headers (ETag / Cache-Control)", "Repeated request", "200 OK with Cache-Control / 304 Not Modified"),
-            ("Verify conditional GET (If-None-Match)", "Request with If-None-Match ETag", "304 Not Modified if content hasn't changed")
+            (
+                "GET_PERF_RESPONSE_TIME",
+                "Verify response time under load",
+                "100 concurrent users",
+                "Average response time < 1s"
+            ),
+            (
+                "GET_PERF_CONCURRENT",
+                "Verify API supports concurrent requests",
+                "Multiple simultaneous GETs",
+                "No deadlocks, all requests succeed"
+            ),
+            (
+                "GET_PERF_RATE_LIMIT",
+                "Verify rate limiting behavior",
+                ">100 requests per minute",
+                "429 Too Many Requests"
+            ),
+            (
+                "GET_PERF_CACHING",
+                "Verify caching headers (ETag / Cache-Control)",
+                "Repeated request",
+                "200 OK with Cache-Control / 304 Not Modified"
+            ),
+            (
+                "GET_PERF_CONDITIONAL",
+                "Verify conditional GET (If-None-Match)",
+                "Request with If-None-Match ETag",
+                "304 Not Modified if content hasn't changed"
+            )
         ]
-        for scenario, inp, exp in perf_cases:
+        for scenario_id, scenario, inp, exp in perf_cases:
             tests.append({
-                "id": f"GET_PERF_{test_counter['id']:02d}",
+                "id": scenario_id,
                 "type": "Performance",
                 "scenario": scenario,
                 "input": inp,
                 "expected": exp
             })
-            test_counter["id"] += 1
 
     def _add_error_handling_tests(self, tests, test_counter):
         error_cases = [

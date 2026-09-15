@@ -1200,7 +1200,137 @@
     <div class="main-content">
 
         <div id="toast-container" class="toast-container"></div>
+        <div id="performanceConfigModal" class="modal" style="display: none;">
+            <div class="modal-content" style="
+            max-width: 900px;
+            width: 95%;
+        ">
 
+                <div class="modal-header">
+                    <div>
+                        <h3 style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin: 0;
+                ">
+                            <i data-lucide="activity" style="
+                            width: 20px;
+                            height: 20px;
+                            color: var(--primary);
+                        "></i>
+
+                            Performance Configuration
+                        </h3>
+
+                        <div style="
+                    margin-top: 5px;
+                    font-size: 0.8rem;
+                    color: var(--gray);
+                ">
+                            Configure performance scenarios for the selected HTTP method
+                        </div>
+                    </div>
+
+                    <button class="modal-close" type="button" onclick="hidePerformanceConfigModal()">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="modal-body" style="
+                max-height: 65vh;
+                overflow-y: auto;
+            ">
+
+                    <div style="
+                    background: #f8fafc;
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 12px 14px;
+                    margin-bottom: 16px;
+                ">
+                        <div style="
+                    font-size: 0.75rem;
+                    color: var(--gray);
+                    margin-bottom: 3px;
+                ">
+                            HTTP Method
+                        </div>
+
+                        <div id="performance-config-method" style="
+                        font-size: 0.95rem;
+                        font-weight: 700;
+                        color: var(--dark);
+                    ">
+                            GET
+                        </div>
+                    </div>
+
+                    <!--
+                Stage 1:
+                Keep the existing configuration container inside
+                the modal so the existing configuration JavaScript
+                remains compatible.
+
+                Stage 2 will replace this content with the
+                method-specific scenarios returned from testcaseengine.py.
+            -->
+                    <div id="perf-config-container" style="
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                ">
+                    </div>
+
+                    <div id="performance-config-empty" style="
+                    text-align: center;
+                    padding: 35px 20px;
+                    color: var(--gray);
+                    border: 1px dashed var(--border);
+                    border-radius: 12px;
+                    background: #fafafa;
+                ">
+                        <i data-lucide="sliders-horizontal" style="
+                        width: 34px;
+                        height: 34px;
+                        opacity: 0.45;
+                        margin-bottom: 10px;
+                    "></i>
+
+                        <div style="
+                    font-weight: 600;
+                    color: var(--dark);
+                    margin-bottom: 4px;
+                ">
+                            Loading Performance scenarios
+                        </div>
+
+                        <div style="
+                    font-size: 0.8rem;
+                ">
+                            Performance scenarios will be loaded for the selected HTTP method.
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn" onclick="hidePerformanceConfigModal()" style="
+                    border: 1px solid var(--border);
+                    background: white;
+                    color: var(--dark);
+                ">
+                        Cancel
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="savePerformanceConfigModal()">
+                        <i data-lucide="check"></i>
+                        Save Configuration
+                    </button>
+                </div>
+
+            </div>
+        </div>
         <div id="exportModal" class="modal" style="display: none;">
             <div class="modal-content">
                 <div class="modal-header">
@@ -1559,22 +1689,76 @@
                             </div>
                         </div>
 
-                        <div class="form-group" id="performance-config-section"
-                            style="background: white; padding: 16px; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 20px;">
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                                    <i data-lucide="activity"
-                                        style="width: 16px; height: 16px; color: var(--primary);"></i>
-                                    Performance Configuration
-                                </label>
-                                <button type="button" id="add-perf-btn" class="btn"
-                                    style="padding: 4px 12px; font-size: 0.75rem; background: #f3f4f6; color: var(--dark); border: 1px solid var(--border);"
-                                    onclick="addNextPerfConfig()">
-                                    <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Add
-                                </button>
-                            </div>
-                            <div id="perf-config-container" style="display: flex; flex-direction: column; gap: 10px;">
+                        <div id="performance-config-section" class="form-group" onclick="openPerformanceConfigModal()"
+                            style="
+        background: white;
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        margin-bottom: 20px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    " onmouseover="this.style.borderColor='var(--primary-light)'; this.style.boxShadow='0 4px 12px rgba(79, 70, 229, 0.08)';"
+                            onmouseout="this.style.borderColor='var(--border)'; this.style.boxShadow='none';">
+                            <div style="
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    ">
+                                <div style="
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        ">
+                                    <div style="
+                width: 36px;
+                height: 36px;
+                border-radius: 10px;
+                background: #f5f3ff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            ">
+                                        <i data-lucide="activity" style="
+                        width: 18px;
+                        height: 18px;
+                        color: var(--primary);
+                    "></i>
+                                    </div>
+
+                                    <div>
+                                        <div style="
+                    font-weight: 600;
+                    color: var(--dark);
+                    font-size: 0.95rem;
+                ">
+                                            Performance Configuration
+                                        </div>
+
+                                        <div style="
+                    margin-top: 3px;
+                    font-size: 0.8rem;
+                    color: var(--gray);
+                ">
+                                            Configure performance scenarios for this HTTP method
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 6px;
+                                    color: var(--primary);
+                                    font-size: 0.8rem;
+                                    font-weight: 600;
+                                    white-space: nowrap;
+                                ">
+                                    Configure
+                                    <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+                                </div>
                             </div>
                         </div>
 
@@ -2142,14 +2326,1952 @@
             lucide.createIcons();
         }
 
+        let performanceScenarioConfigs = {};
+        // =========================================================
+        // PERFORMANCE CONFIGURATION MODAL
+        // =========================================================
+
+        async function openPerformanceConfigModal() {
+
+            const modal = document.getElementById(
+                'performanceConfigModal'
+            );
+
+            if (!modal) {
+                console.error(
+                    'Performance configuration modal not found.'
+                );
+                return;
+            }
+
+            const methodElement =
+                document.getElementById('method');
+
+            const methodDisplay =
+                document.getElementById(
+                    'performance-config-method'
+                );
+
+            const container =
+                document.getElementById(
+                    'perf-config-container'
+                );
+
+            const emptyState =
+                document.getElementById(
+                    'performance-config-empty'
+                );
+
+            const endpointElement =
+                document.getElementById('endpoint');
+
+            const payloadElement =
+                document.getElementById('payload');
+
+            const method =
+                methodElement?.value?.trim().toUpperCase() || '';
+
+            const endpoint =
+                endpointElement?.value?.trim() || '';
+
+            if (!method || method === 'ALL') {
+
+                showError(
+                    'Select a specific HTTP method before configuring performance scenarios.'
+                );
+
+                return;
+            }
+
+            if (!endpoint) {
+
+                showError(
+                    'Enter an endpoint before configuring performance scenarios.'
+                );
+
+                return;
+            }
+
+            if (methodDisplay) {
+                methodDisplay.textContent = method;
+            }
+
+            modal.style.display = 'flex';
+
+            if (container) {
+                container.innerHTML = '';
+            }
+
+            if (emptyState) {
+
+                emptyState.style.display = 'block';
+
+                emptyState.innerHTML = `
+            <div style="
+                text-align: center;
+                padding: 20px;
+                color: var(--gray);
+            ">
+                <span class="loading-spinner"></span>
+
+                <div style="
+                    margin-top: 12px;
+                    font-size: 0.85rem;
+                ">
+                    Loading ${method} performance scenarios...
+                </div>
+            </div>
+        `;
+            }
+
+            lucide.createIcons();
+
+            try {
+
+                let payload = '{}';
+
+                if (payloadElement) {
+                    payload = payloadElement.value || '{}';
+                }
+
+                const response = await fetch(
+                    '/api/performance-scenarios',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body: JSON.stringify({
+                            method: method,
+                            endpoint: endpoint,
+                            payload: payload,
+                            field_configs: getCurrentFieldConfigsForPerformance(),
+                            baseUrl:
+                                getSelectedEnvironmentConfig()
+                                    ?.baseUrl || ''
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+
+                    let errorMessage =
+                        `Server returned HTTP ${response.status}`;
+
+                    try {
+
+                        const errorData =
+                            await response.json();
+
+                        errorMessage =
+                            errorData.error || errorMessage;
+
+                    } catch (e) {
+                        // Keep default error message.
+                    }
+
+                    throw new Error(
+                        errorMessage
+                    );
+                }
+
+                const data =
+                    await response.json();
+
+                if (!data.success) {
+                    throw new Error(
+                        data.error ||
+                        'Failed to load performance scenarios.'
+                    );
+                }
+
+                renderPerformanceScenarioList(
+                    data.test_cases || []
+                );
+
+            } catch (error) {
+
+                console.error(
+                    'Performance scenario loading failed:',
+                    error
+                );
+
+                if (container) {
+                    container.innerHTML = '';
+                }
+
+                if (emptyState) {
+
+                    emptyState.style.display = 'block';
+
+                    emptyState.innerHTML = `
+                <div style="
+                    text-align: center;
+                    padding: 20px;
+                    color: var(--danger);
+                ">
+
+                    <i
+                        data-lucide="alert-circle"
+                        style="
+                            width: 32px;
+                            height: 32px;
+                            margin-bottom: 8px;
+                        "
+                    ></i>
+
+                    <div style="
+                        font-weight: 600;
+                        color: var(--dark);
+                        margin-bottom: 4px;
+                    ">
+                        Unable to load performance scenarios
+                    </div>
+
+                    <div style="
+                        font-size: 0.8rem;
+                    ">
+                        ${error.message}
+                    </div>
+
+                </div>
+            `;
+                }
+
+                lucide.createIcons();
+            }
+        }
+
+        function getCurrentFieldConfigsForPerformance() {
+
+            const fieldConfigs = {};
+
+            document.querySelectorAll(
+                '#fieldTableBody tr'
+            ).forEach(row => {
+
+                if (!row.cells[0]) {
+                    return;
+                }
+
+                const field =
+                    row.cells[0].textContent.trim();
+
+                const typeSelect =
+                    row.querySelector('.type-select');
+
+                const requiredSelect =
+                    row.querySelector(
+                        '.required-select'
+                    );
+
+                if (
+                    field &&
+                    typeSelect &&
+                    requiredSelect
+                ) {
+
+                    fieldConfigs[field] = {
+                        type: typeSelect.value,
+
+                        required:
+                            requiredSelect.value ===
+                            'required'
+                    };
+                }
+            });
+
+            return fieldConfigs;
+        }
+
+        function renderPerformanceScenarioList(scenarios) {
+
+            const container =
+                document.getElementById(
+                    'perf-config-container'
+                );
+
+            const emptyState =
+                document.getElementById(
+                    'performance-config-empty'
+                );
+
+            if (!container) {
+                return;
+            }
+
+            container.innerHTML = '';
+
+            if (
+                !Array.isArray(scenarios) ||
+                scenarios.length === 0
+            ) {
+
+                if (emptyState) {
+
+                    emptyState.style.display = 'block';
+
+                    emptyState.innerHTML = `
+                <div style="
+                    text-align: center;
+                    padding: 20px;
+                    color: var(--gray);
+                ">
+
+                    <i
+                        data-lucide="info"
+                        style="
+                            width: 32px;
+                            height: 32px;
+                            margin-bottom: 8px;
+                            opacity: 0.5;
+                        "
+                    ></i>
+
+                    <div style="
+                        font-weight: 600;
+                        color: var(--dark);
+                        margin-bottom: 4px;
+                    ">
+                        No performance scenarios found
+                    </div>
+
+                    <div style="
+                        font-size: 0.8rem;
+                    ">
+                        This HTTP method does not currently
+                        have any performance scenarios.
+                    </div>
+
+                </div>
+            `;
+                }
+
+                lucide.createIcons();
+                return;
+            }
+
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+
+            scenarios.forEach(
+                (scenario, index) => {
+
+                    const configurationType =
+                        getPerformanceConfigurationType(
+                            scenario.scenario
+                        );
+
+                    const scenarioId =
+                        String(
+                            scenario.id ||
+                            `PERF-${index + 1}`
+                        ).trim();
+
+                    const savedConfig =
+                        performanceScenarioConfigs[
+                        scenarioId
+                        ];
+
+                    const isSelected =
+                        savedConfig
+                            ? savedConfig.selected !== false
+                            : true;
+
+                    const card =
+                        document.createElement('div');
+
+                    card.className =
+                        'performance-scenario-config-card';
+
+                    card.dataset.scenarioId =
+                        scenario.id || `PERF-${index + 1}`;
+
+                    card.dataset.scenario =
+                        scenario.scenario || '';
+
+                    card.dataset.configurationType =
+                        configurationType || 'unknown';
+
+
+                    card.style.cssText = `
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: white;
+                padding: 16px;
+                transition: all 0.2s ease;
+            `;
+
+
+                    const configurationHtml =
+                        buildPerformanceConfigurationFields(
+                            scenario,
+                            configurationType
+                        );
+
+
+                    card.innerHTML = `
+
+                <div style="
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 12px;
+                ">
+
+                    <div style="
+                        padding-top: 3px;
+                    ">
+                        <input
+                            type="checkbox"
+                            class="performance-scenario-checkbox"
+                            data-scenario-id="${escapeHtml(scenarioId)}"
+                            ${isSelected ? 'checked' : ''}
+                            style="
+                                width: 16px !important;
+                                height: 16px !important;
+                            "
+                        >
+                    </div>
+
+
+                    <div style="
+                        flex: 1;
+                        min-width: 0;
+                    ">
+
+                        <div style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 10px;
+                            margin-bottom: 7px;
+                        ">
+
+                            <div style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                min-width: 0;
+                            ">
+
+                                <span style="
+                                    font-size: 0.7rem;
+                                    font-weight: 700;
+                                    color: var(--primary);
+                                    background: #f5f3ff;
+                                    padding: 3px 7px;
+                                    border-radius: 6px;
+                                    white-space: nowrap;
+                                ">
+                                    ${escapeHtml(
+                        scenario.id ||
+                        `PERF-${index + 1}`
+                    )}
+                                </span>
+
+                                <span style="
+                                    font-size: 0.68rem;
+                                    font-weight: 600;
+                                    color: #6b7280;
+                                    background: #f3f4f6;
+                                    padding: 3px 7px;
+                                    border-radius: 6px;
+                                    white-space: nowrap;
+                                ">
+                                    ${escapeHtml(
+                        configurationType ||
+                        'Performance'
+                    )}
+                                </span>
+
+                            </div>
+
+                        </div>
+
+
+                        <div style="
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                            color: var(--dark);
+                            line-height: 1.4;
+                        ">
+                            ${escapeHtml(
+                        scenario.scenario ||
+                        'Performance scenario'
+                    )}
+                        </div>
+
+
+                        <div style="
+                            margin-top: 10px;
+                            display: grid;
+                            grid-template-columns:
+                                repeat(
+                                    auto-fit,
+                                    minmax(220px, 1fr)
+                                );
+                            gap: 10px;
+                        ">
+
+                            <div style="
+                                background: #f8fafc;
+                                border: 1px solid var(--border);
+                                border-radius: 8px;
+                                padding: 9px 10px;
+                            ">
+
+                                <div style="
+                                    font-size: 0.68rem;
+                                    font-weight: 600;
+                                    color: var(--gray);
+                                    margin-bottom: 3px;
+                                ">
+                                    Generated Input
+                                </div>
+
+                                <div style="
+                                    font-size: 0.76rem;
+                                    color: var(--dark);
+                                    word-break: break-word;
+                                ">
+                                    ${escapeHtml(
+                        formatPerformanceScenarioValue(
+                            scenario.input
+                        )
+                    )}
+                                </div>
+
+                            </div>
+
+
+                            <div style="
+                                background: #f8fafc;
+                                border: 1px solid var(--border);
+                                border-radius: 8px;
+                                padding: 9px 10px;
+                            ">
+
+                                <div style="
+                                    font-size: 0.68rem;
+                                    font-weight: 600;
+                                    color: var(--gray);
+                                    margin-bottom: 3px;
+                                ">
+                                    Expected
+                                </div>
+
+                                <div style="
+                                    font-size: 0.76rem;
+                                    color: var(--dark);
+                                    word-break: break-word;
+                                ">
+                                    ${escapeHtml(
+                        formatPerformanceScenarioValue(
+                            scenario.expected
+                        )
+                    )}
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div style="
+                            margin-top: 12px;
+                        ">
+                            ${configurationHtml}
+                        </div>
+
+                    </div>
+
+                </div>
+            `;
+
+
+                    container.appendChild(card);
+                }
+            );
+            restorePerformanceScenarioConfigs();
+            lucide.createIcons();
+        }
+
+        function buildPerformanceConfigurationFields(
+            scenario,
+            configurationType
+        ) {
+
+            if (!configurationType) {
+
+                return `
+            <div style="
+                padding: 10px 12px;
+                background: #f9fafb;
+                border: 1px dashed var(--border);
+                border-radius: 8px;
+                font-size: 0.76rem;
+                color: var(--gray);
+            ">
+                No configuration controls have been defined
+                for this performance scenario yet.
+            </div>
+        `;
+            }
+
+
+            // ---------------------------------------------------------
+            // LOAD FACTOR
+            // ---------------------------------------------------------
+
+            if (
+                configurationType === 'load_factor'
+            ) {
+
+                return `
+            <div
+                class="performance-config-fields"
+                data-config-type="load_factor"
+            >
+
+                <div style="
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: var(--dark);
+                    margin-bottom: 8px;
+                ">
+                    Load Factor Configuration
+                </div>
+
+
+                <div style="
+                    display: grid;
+                    grid-template-columns:
+                        repeat(
+                            auto-fit,
+                            minmax(160px, 1fr)
+                        );
+                    gap: 10px;
+                ">
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Users
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-users"
+                            data-config-field="value"
+                            placeholder="Number of users"
+                        >
+
+                    </div>
+
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Spawn Rate
+                        </label>
+
+                        <input
+                            type="number"
+                            min="0.1"
+                            step="0.1"
+                            class="performance-config-input perf-spawn"
+                            data-config-field="spawn"
+                            placeholder="Users / sec"
+                        >
+
+                    </div>
+
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Duration
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-duration"
+                            data-config-field="duration"
+                            placeholder="Duration"
+                        >
+
+                    </div>
+
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Unit
+                        </label>
+
+                        <select
+                            class="performance-config-input perf-unit"
+                            data-config-field="unit"
+                        >
+                            <option value="seconds">
+                                Seconds
+                            </option>
+
+                            <option value="minutes">
+                                Minutes
+                            </option>
+
+                            <option value="hours">
+                                Hours
+                            </option>
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+            }
+
+
+            // ---------------------------------------------------------
+            // RATE LIMIT
+            // ---------------------------------------------------------
+
+            if (
+                configurationType === 'rate_limit'
+            ) {
+
+                return `
+            <div
+                class="performance-config-fields"
+                data-config-type="rate_limit"
+            >
+
+                <div style="
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: var(--dark);
+                    margin-bottom: 8px;
+                ">
+                    Rate Limit Configuration
+                </div>
+
+
+                <div style="
+                    display: grid;
+                    grid-template-columns:
+                        repeat(
+                            auto-fit,
+                            minmax(160px, 1fr)
+                        );
+                    gap: 10px;
+                ">
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Requests
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-requests"
+                            data-config-field="value"
+                            placeholder="Number of requests"
+                        >
+
+                    </div>
+
+                    <div>
+    <label style="
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--gray);
+        margin-bottom: 5px;
+    ">
+        Spawn Rate
+    </label>
+
+    <input
+        type="number"
+        min="1"
+        class="performance-config-input perf-spawn"
+        data-config-field="spawn"
+        placeholder="Users per second"
+    >
+</div>
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Duration
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-duration"
+                            data-config-field="duration"
+                            placeholder="Duration"
+                        >
+
+                    </div>
+
+
+                    <div>
+
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Unit
+                        </label>
+
+                        <select
+                            class="performance-config-input perf-unit"
+                            data-config-field="unit"
+                        >
+                            <option value="seconds">
+                                Seconds
+                            </option>
+
+                            <option value="minutes">
+                                Minutes
+                            </option>
+
+                            <option value="hours">
+                                Hours
+                            </option>
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+            }
+
+
+            // ---------------------------------------------------------
+            // CACHING
+            // ---------------------------------------------------------
+
+            if (
+                configurationType === 'caching'
+            ) {
+
+                return `
+            <div
+                class="performance-config-fields"
+                data-config-type="caching"
+            >
+
+                <div style="
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: var(--dark);
+                    margin-bottom: 8px;
+                ">
+                    Caching Configuration
+                </div>
+
+
+                <div style="
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                ">
+
+                    <label style="
+                        display: flex;
+                        align-items: center;
+                        gap: 7px;
+                        border: 1px solid var(--border);
+                        border-radius: 8px;
+                        padding: 9px 12px;
+                        cursor: pointer;
+                        background: #f8fafc;
+                    ">
+
+                        <input
+                            type="radio"
+                            name="caching_${escapeHtml(
+                    scenario.id || ''
+                )}"
+                            class="performance-config-input perf-caching"
+                            data-config-field="value"
+                            value="Yes"
+                            checked
+                        >
+
+                        <span style="
+                            font-size: 0.76rem;
+                            font-weight: 600;
+                        ">
+                            Enable caching
+                        </span>
+
+                    </label>
+
+
+                    <label style="
+                        display: flex;
+                        align-items: center;
+                        gap: 7px;
+                        border: 1px solid var(--border);
+                        border-radius: 8px;
+                        padding: 9px 12px;
+                        cursor: pointer;
+                        background: #f8fafc;
+                    ">
+
+                        <input
+                            type="radio"
+                            name="caching_${escapeHtml(
+                    scenario.id || ''
+                )}"
+                            class="performance-config-input perf-caching"
+                            data-config-field="value"
+                            value="No"
+                        >
+
+                        <span style="
+                            font-size: 0.76rem;
+                            font-weight: 600;
+                        ">
+                            Disable caching
+                        </span>
+
+                    </label>
+
+                </div>
+
+            </div>
+        `;
+            }
+
+
+            // ---------------------------------------------------------
+            // STRESS FACTOR
+            // ---------------------------------------------------------
+
+            if (
+                configurationType === 'stress_factor'
+            ) {
+
+                return `
+            <div
+                class="performance-config-fields"
+                data-config-type="stress_factor"
+            >
+
+                <div style="
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: var(--dark);
+                    margin-bottom: 8px;
+                ">
+                    Stress Factor Configuration
+                </div>
+
+
+                <div style="
+                    display: grid;
+                    grid-template-columns:
+                        repeat(
+                            auto-fit,
+                            minmax(160px, 1fr)
+                        );
+                    gap: 10px;
+                ">
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Users
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-users"
+                            data-config-field="value"
+                            placeholder="Number of users"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Spawn Rate
+                        </label>
+
+                        <input
+                            type="number"
+                            min="0.1"
+                            step="0.1"
+                            class="performance-config-input perf-spawn"
+                            data-config-field="spawn"
+                            placeholder="Users / sec"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Duration
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-duration"
+                            data-config-field="duration"
+                            placeholder="Duration"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Unit
+                        </label>
+
+                        <select
+                            class="performance-config-input perf-unit"
+                            data-config-field="unit"
+                        >
+                            <option value="seconds">
+                                Seconds
+                            </option>
+
+                            <option value="minutes">
+                                Minutes
+                            </option>
+
+                            <option value="hours">
+                                Hours
+                            </option>
+                        </select>
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+            }
+
+
+            // ---------------------------------------------------------
+            // ENDURANCE
+            // ---------------------------------------------------------
+
+            if (
+                configurationType === 'endurance'
+            ) {
+
+                return `
+            <div
+                class="performance-config-fields"
+                data-config-type="endurance"
+            >
+
+                <div style="
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: var(--dark);
+                    margin-bottom: 8px;
+                ">
+                    Endurance Configuration
+                </div>
+
+
+                <div style="
+                    display: grid;
+                    grid-template-columns:
+                        repeat(
+                            auto-fit,
+                            minmax(160px, 1fr)
+                        );
+                    gap: 10px;
+                ">
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Users
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-users"
+                            data-config-field="value"
+                            placeholder="Number of users"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Spawn Rate
+                        </label>
+
+                        <input
+                            type="number"
+                            min="0.1"
+                            step="0.1"
+                            class="performance-config-input perf-spawn"
+                            data-config-field="spawn"
+                            placeholder="Users / sec"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Duration
+                        </label>
+
+                        <input
+                            type="number"
+                            min="1"
+                            class="performance-config-input perf-duration"
+                            data-config-field="duration"
+                            placeholder="Duration"
+                        >
+                    </div>
+
+
+                    <div>
+                        <label style="
+                            display: block;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: var(--gray);
+                            margin-bottom: 5px;
+                        ">
+                            Unit
+                        </label>
+
+                        <select
+                            class="performance-config-input perf-unit"
+                            data-config-field="unit"
+                        >
+                            <option value="seconds">
+                                Seconds
+                            </option>
+
+                            <option value="minutes">
+                                Minutes
+                            </option>
+
+                            <option value="hours">
+                                Hours
+                            </option>
+                        </select>
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+            }
+
+
+            return `
+        <div style="
+            padding: 10px 12px;
+            background: #f9fafb;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            font-size: 0.76rem;
+            color: var(--gray);
+        ">
+            Configuration for this performance scenario
+            will be added separately.
+        </div>
+    `;
+        }
+
+        function restorePerformanceScenarioConfigs() {
+
+            const cards = document.querySelectorAll(
+                '#perf-config-container .performance-scenario-config-card'
+            );
+
+            cards.forEach(card => {
+
+                const scenarioId =
+                    card.dataset.scenarioId;
+
+                if (!scenarioId) {
+                    return;
+                }
+
+                const savedConfig =
+                    performanceScenarioConfigs[scenarioId];
+
+                if (!savedConfig) {
+                    return;
+                }
+
+                const fields =
+                    card.querySelector(
+                        '.performance-config-fields'
+                    );
+
+                if (!fields) {
+                    return;
+                }
+
+
+                // -----------------------------------------------------
+                // LOAD FACTOR / STRESS / ENDURANCE
+                // -----------------------------------------------------
+
+                if (
+                    savedConfig.type === 'load_factor' ||
+                    savedConfig.type === 'stress_factor' ||
+                    savedConfig.type === 'endurance'
+                ) {
+
+                    const valueInput =
+                        fields.querySelector(
+                            '[data-config-field="value"]'
+                        );
+
+                    const spawnInput =
+                        fields.querySelector(
+                            '[data-config-field="spawn"]'
+                        );
+
+                    const durationInput =
+                        fields.querySelector(
+                            '[data-config-field="duration"]'
+                        );
+
+                    const unitInput =
+                        fields.querySelector(
+                            '[data-config-field="unit"]'
+                        );
+
+
+                    if (valueInput) {
+                        valueInput.value =
+                            savedConfig.value ?? '';
+                    }
+
+                    if (spawnInput) {
+                        spawnInput.value =
+                            savedConfig.spawn ?? '';
+                    }
+
+                    if (durationInput) {
+                        durationInput.value =
+                            savedConfig.duration ?? '';
+                    }
+
+                    if (unitInput) {
+                        unitInput.value =
+                            savedConfig.unit || 'seconds';
+                    }
+                }
+
+
+                // -----------------------------------------------------
+                // RATE LIMIT
+                // -----------------------------------------------------
+
+                else if (
+                    savedConfig.type === 'rate_limit'
+                ) {
+
+                    const valueInput =
+                        fields.querySelector(
+                            '[data-config-field="value"]'
+                        );
+
+                    const durationInput =
+                        fields.querySelector(
+                            '[data-config-field="duration"]'
+                        );
+
+                    const unitInput =
+                        fields.querySelector(
+                            '[data-config-field="unit"]'
+                        );
+
+
+                    if (valueInput) {
+                        valueInput.value =
+                            savedConfig.value ?? '';
+                    }
+
+                    if (durationInput) {
+                        durationInput.value =
+                            savedConfig.duration ?? '';
+                    }
+
+                    if (unitInput) {
+                        unitInput.value =
+                            savedConfig.unit || 'seconds';
+                    }
+                }
+
+
+                // -----------------------------------------------------
+                // CACHING
+                // -----------------------------------------------------
+
+                else if (
+                    savedConfig.type === 'caching'
+                ) {
+
+                    const cachingInput =
+                        fields.querySelector(
+                            `[data-config-field="value"][value="${savedConfig.value}"]`
+                        );
+
+                    if (cachingInput) {
+                        cachingInput.checked = true;
+                    }
+                }
+            });
+        }
+
+        function getSavedPerformanceConfigForTestCase(tc) {
+
+            const testCaseId =
+                String(tc.id || '').trim();
+
+            const testCaseScenario =
+                String(tc.scenario || '').trim();
+
+            let config = null;
+
+            // ---------------------------------------------------------
+            // 1. First try exact testcase ID match.
+            // ---------------------------------------------------------
+
+            if (testCaseId) {
+
+                config =
+                    performanceScenarioConfigs[
+                    testCaseId
+                    ] || null;
+            }
+
+            // ---------------------------------------------------------
+            // 2. If ID does not match, try exact scenario-name match.
+            // ---------------------------------------------------------
+
+            if (
+                !config &&
+                testCaseScenario
+            ) {
+
+                config =
+                    Object.values(
+                        performanceScenarioConfigs
+                    ).find(savedConfig => {
+
+                        return (
+                            savedConfig &&
+                            String(
+                                savedConfig.scenario || ''
+                            ).trim() ===
+                            testCaseScenario
+                        );
+
+                    }) || null;
+            }
+
+            console.log(
+                'PERFORMANCE CONFIG LOOKUP:',
+                {
+                    generatedTestCaseId:
+                        testCaseId,
+
+                    generatedScenario:
+                        testCaseScenario,
+
+                    availableConfigIds:
+                        Object.keys(
+                            performanceScenarioConfigs
+                        ),
+
+                    matchedConfig:
+                        config
+                }
+            );
+
+            if (!config) {
+                return null;
+            }
+
+            if (config.selected === false) {
+                return null;
+            }
+
+            return config;
+        }
+
+        function escapeHtml(value) {
+
+            return String(
+                value ?? ''
+            )
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+
+        function formatPerformanceScenarioValue(value) {
+
+            if (
+                value === null ||
+                value === undefined
+            ) {
+                return 'N/A';
+            }
+
+            if (
+                typeof value === 'object'
+            ) {
+                try {
+                    return JSON.stringify(value);
+                } catch (e) {
+                    return String(value);
+                }
+            }
+
+            return String(value);
+        }
+
+        function getPerformanceConfigurationType(scenario) {
+
+            const text = String(scenario || '').toLowerCase().trim();
+
+            if (!text) {
+                return null;
+            }
+
+            // ---------------------------------------------------------
+            // CACHING / CONDITIONAL REQUEST SCENARIOS
+            // ---------------------------------------------------------
+
+            if (
+                text.includes('caching headers') ||
+                text.includes('cache-control') ||
+                text.includes('etag') ||
+                text.includes('conditional get') ||
+                text.includes('if-none-match')
+            ) {
+                return 'caching';
+            }
+
+
+            // ---------------------------------------------------------
+            // RATE LIMITING
+            // ---------------------------------------------------------
+
+            if (
+                text.includes('rate limiting') ||
+                text.includes('rate limit') ||
+                text.includes('exceed rate limit') ||
+                text.includes('requests per minute')
+            ) {
+                return 'rate_limit';
+            }
+
+
+            // ---------------------------------------------------------
+            // LOAD / CONCURRENCY / RESPONSE-TIME SCENARIOS
+            // ---------------------------------------------------------
+
+            if (
+                text.includes('response time under load') ||
+                text.includes('normal load response time') ||
+                text.includes('verify response time is within acceptable limits') ||
+                text.includes('verify response time within sla') ||
+                text.includes('verify response time is within sla') ||
+                text.includes('concurrent requests') ||
+                text.includes('concurrent users') ||
+                text.includes('concurrent get') ||
+                text.includes('concurrent delete') ||
+                text.includes('load test') ||
+                text.includes('under load')
+            ) {
+                return 'load_factor';
+            }
+
+
+            // ---------------------------------------------------------
+            // STRESS SCENARIOS
+            // ---------------------------------------------------------
+
+            if (
+                text.includes('stress') ||
+                text.includes('high concurrency') ||
+                text.includes('peak load')
+            ) {
+                return 'stress_factor';
+            }
+
+
+            // ---------------------------------------------------------
+            // ENDURANCE / SOAK SCENARIOS
+            // ---------------------------------------------------------
+
+            if (
+                text.includes('endurance') ||
+                text.includes('soak') ||
+                text.includes('sustained load') ||
+                text.includes('long-running')
+            ) {
+                return 'endurance';
+            }
+
+
+            // ---------------------------------------------------------
+            // UNKNOWN PERFORMANCE SCENARIO
+            // ---------------------------------------------------------
+
+            return null;
+        }
+
+        function hidePerformanceConfigModal() {
+            const modal = document.getElementById('performanceConfigModal');
+
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+
+        function savePerformanceConfigModal() {
+
+            const selectedCards =
+                Array.from(
+                    document.querySelectorAll(
+                        '#perf-config-container .performance-scenario-config-card'
+                    )
+                );
+
+
+            const configs = {};
+
+            for (const card of selectedCards) {
+
+                const checkbox =
+                    card.querySelector(
+                        '.performance-scenario-checkbox'
+                    );
+
+                if (!checkbox) {
+                    continue;
+                }
+
+                const isSelected =
+                    checkbox.checked;
+
+
+                const scenarioId =
+                    card.dataset.scenarioId;
+
+                const scenario =
+                    card.dataset.scenario || '';
+
+                const configurationType =
+                    card.dataset.configurationType;
+
+
+                if (!scenarioId || !configurationType) {
+                    continue;
+                }
+
+
+                const fields =
+                    card.querySelector(
+                        '.performance-config-fields'
+                    );
+
+                if (!fields) {
+
+                    configs[scenarioId] = {
+                        type: configurationType,
+                        scenario: scenario,
+                        selected: isSelected
+                    };
+
+                    continue;
+                }
+
+
+                const config = {
+                    type: configurationType,
+                    scenario: scenario
+                };
+
+                config.selected = isSelected;
+
+                // -----------------------------------------------------
+                // Numeric performance configurations
+                // -----------------------------------------------------
+
+                if (
+                    configurationType === 'load_factor' ||
+                    configurationType === 'stress_factor' ||
+                    configurationType === 'endurance'
+                ) {
+
+                    const valueInput =
+                        fields.querySelector(
+                            '[data-config-field="value"]'
+                        );
+
+                    const spawnInput =
+                        fields.querySelector(
+                            '[data-config-field="spawn"]'
+                        );
+
+                    const durationInput =
+                        fields.querySelector(
+                            '[data-config-field="duration"]'
+                        );
+
+                    const unitInput =
+                        fields.querySelector(
+                            '[data-config-field="unit"]'
+                        );
+
+
+                    config.value =
+                        valueInput?.value !== ''
+                            ? Number(valueInput.value)
+                            : null;
+
+                    config.spawn =
+                        spawnInput?.value !== ''
+                            ? Number(spawnInput.value)
+                            : null;
+
+                    config.duration =
+                        durationInput?.value !== ''
+                            ? Number(durationInput.value)
+                            : null;
+
+                    config.unit =
+                        unitInput?.value ||
+                        'seconds';
+                }
+
+
+                // -----------------------------------------------------
+                // Rate limit
+                // -----------------------------------------------------
+
+                else if (
+                    configurationType === 'rate_limit'
+                ) {
+
+                    const valueInput =
+                        fields.querySelector(
+                            '[data-config-field="value"]'
+                        );
+
+                    const spawnInput =
+                        fields.querySelector(
+                            '[data-config-field="spawn"]'
+                        );
+
+                    const durationInput =
+                        fields.querySelector(
+                            '[data-config-field="duration"]'
+                        );
+
+                    const unitInput =
+                        fields.querySelector(
+                            '[data-config-field="unit"]'
+                        );
+
+
+                    config.value =
+                        valueInput?.value !== ''
+                            ? Number(valueInput.value)
+                            : null;
+
+                    config.spawn =
+                        spawnInput?.value !== ''
+                            ? Number(spawnInput.value)
+                            : null;
+
+                    config.duration =
+                        durationInput?.value !== ''
+                            ? Number(durationInput.value)
+                            : null;
+
+                    config.unit =
+                        unitInput?.value ||
+                        'seconds';
+                }
+
+
+                // -----------------------------------------------------
+                // Caching
+                // -----------------------------------------------------
+
+                else if (
+                    configurationType === 'caching'
+                ) {
+
+                    const selectedCaching =
+                        fields.querySelector(
+                            '[data-config-field="value"]:checked'
+                        );
+
+                    config.value =
+                        selectedCaching
+                            ? selectedCaching.value
+                            : 'Yes';
+                }
+
+
+                configs[scenarioId] = config;
+            }
+
+            /*
+             * Keep the existing perfConfigs object synchronized
+             * with the selected configuration.
+             *
+             * This preserves compatibility with the current
+             * /api/generate flow until we replace that flow in
+             * the next stage.
+             */
+
+            if (
+                typeof perfConfigs !== 'undefined'
+            ) {
+
+                [
+                    'rate_limit',
+                    'load_factor',
+                    'stress_factor',
+                    'endurance'
+                ].forEach(
+                    type => {
+
+                        perfConfigs[type] = '';
+                        perfConfigs[`${type}_spawn`] = '';
+                        perfConfigs[`${type}_duration`] = '';
+                        perfConfigs[`${type}_unit`] = 'seconds';
+                    }
+                );
+
+
+                Object.values(
+                    performanceScenarioConfigs
+                ).forEach(
+                    config => {
+
+                        if (!config || !config.type) {
+                            return;
+                        }
+
+
+                        if (
+                            config.type === 'load_factor' ||
+                            config.type === 'stress_factor' ||
+                            config.type === 'endurance'
+                        ) {
+
+                            if (
+                                config.value !== null &&
+                                config.value !== undefined
+                            ) {
+                                perfConfigs[
+                                    config.type
+                                ] = config.value;
+                            }
+
+
+                            if (
+                                config.spawn !== null &&
+                                config.spawn !== undefined
+                            ) {
+                                perfConfigs[
+                                    `${config.type}_spawn`
+                                ] = config.spawn;
+                            }
+
+
+                            if (
+                                config.duration !== null &&
+                                config.duration !== undefined
+                            ) {
+                                perfConfigs[
+                                    `${config.type}_duration`
+                                ] = config.duration;
+                            }
+
+
+                            perfConfigs[
+                                `${config.type}_unit`
+                            ] =
+                                config.unit ||
+                                'seconds';
+                        }
+
+
+                        else if (
+                            config.type === 'rate_limit'
+                        ) {
+
+                            if (
+                                config.value !== null &&
+                                config.value !== undefined
+                            ) {
+                                perfConfigs.rate_limit =
+                                    config.value;
+                            }
+
+
+                            if (
+                                config.duration !== null &&
+                                config.duration !== undefined
+                            ) {
+                                perfConfigs.rate_limit_duration =
+                                    config.duration;
+                            }
+
+
+                            perfConfigs.rate_limit_unit =
+                                config.unit ||
+                                'seconds';
+                        }
+
+
+                        else if (
+                            config.type === 'caching'
+                        ) {
+
+                            perfConfigs.caching =
+                                config.value;
+                        }
+                    }
+                );
+            }
+
+            performanceScenarioConfigs =
+                configs;
+
+            hidePerformanceConfigModal();
+
+            showSuccess(
+                'Performance configuration saved.'
+            );
+
+            console.log(
+                'PERFORMANCE SCENARIO CONFIGURATIONS:',
+                performanceScenarioConfigs
+            );
+        }
         // PERFORMANCE CONFIGURATION SEQUENTIAL ADDER
-        const perfOptions = [
-            { id: 'rate_limit', label: 'Rate Limit', placeholder: '# of Requests', spawnRate: 'Users/Sec', durationPlaceholder: 'Time', type: 'number' },
-            { id: 'load_factor', label: 'Load Factor', placeholder: '# of Users', spawnRate: 'Users/Sec', durationPlaceholder: 'Time', type: 'number' },
-            { id: 'stress_factor', label: 'Stress Factor', placeholder: '# of Users', spawnRate: 'Users/Sec', durationPlaceholder: 'Time', type: 'number' },
-            { id: 'endurance', label: 'Endurance', placeholder: '# of Users', spawnRate: 'Users/Sec', durationPlaceholder: 'Time', type: 'number' },
-            { id: 'caching', label: 'Caching', type: 'radio', options: ['Yes', 'No'] }
-        ];
         /*
         function getPerformanceConfigForScenario(testCase, perfConfigs) {
             const scenario = String(testCase.scenario || '').toLowerCase();
@@ -2217,124 +4339,7 @@
         }
         */
 
-        let addedPerfs = [];
-        function buildPerformanceConfigs(perfConfigs) {
-            const configs = [];
 
-            const performanceTypes = [
-                'rate_limit',
-                'load_factor',
-                'stress_factor',
-                'endurance'
-            ];
-
-            performanceTypes.forEach(type => {
-                const value = perfConfigs[type];
-
-                if (value === undefined || value === null || value === '') {
-                    return;
-                }
-
-                const spawn = perfConfigs[`${type}_spawn`];
-                const duration = perfConfigs[`${type}_duration`];
-                const unit = perfConfigs[`${type}_unit`] || 'seconds';
-
-                if (
-                    spawn === undefined ||
-                    spawn === null ||
-                    spawn === '' ||
-                    duration === undefined ||
-                    duration === null ||
-                    duration === ''
-                ) {
-                    return;
-                }
-
-                configs.push({
-                    type: type,
-                    value: value,
-                    spawn: spawn,
-                    duration: duration,
-                    unit: unit
-                });
-            });
-
-            return configs;
-        }
-        function addNextPerfConfig() {
-            const available = perfOptions.filter(o => !addedPerfs.includes(o.id));
-            if (available.length === 0) return;
-
-            const opt = available[0];
-            addedPerfs.push(opt.id);
-
-            const container = document.getElementById('perf-config-container');
-            const div = document.createElement('div');
-            div.id = 'perf_row_' + opt.id;
-            div.style = "display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; background: #f9fafb; border-radius: 8px; border: 1px solid var(--border);";
-
-            let inputHtml = '';
-            if (opt.type === 'number') {
-                inputHtml = `
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <input
-                        type="number"
-                        id="perf_${opt.id}"
-                        placeholder="${opt.placeholder}"
-                        style="padding: 8px 12px; font-size: 0.85rem; flex: 1; border: 1px solid var(--border); border-radius: 12px;">
-
-                    <input
-                        type="number"
-                        id="perf_${opt.id}_spawn"
-                        placeholder="${opt.spawnRate}"
-                        style="padding: 8px 12px; font-size: 0.85rem; flex: 1; border: 1px solid var(--border); border-radius: 12px;">
-
-                    <input
-                        type="number"
-                        id="perf_${opt.id}_duration"
-                        placeholder="${opt.durationPlaceholder}"
-                        style="padding: 8px 12px; font-size: 0.85rem; flex: 1; border: 1px solid var(--border); border-radius: 12px;">
-
-                    <select
-                        id="perf_${opt.id}_unit"
-                        style="padding: 8px 12px; font-size: 0.85rem; width: 70px; border: 1px solid var(--border); border-radius: 12px;">
-                        <option value="seconds">Sec</option>
-                        <option value="minutes" selected>Min</option>
-                        <option value="hours">Hr</option>
-                    </select>
-                </div>
-                `;
-            } else if (opt.type === 'radio') {
-                inputHtml = `
-                    <div style="display: flex; gap: 16px;">
-                        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal; cursor:pointer;"><input type="radio" name="perf_${opt.id}" value="Yes" checked style="width: 14px !important; height: 14px !important; margin: 0; padding: 0;"> Yes</label>
-                        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal; cursor:pointer;"><input type="radio" name="perf_${opt.id}" value="No" style="width: 14px !important; height: 14px !important; margin: 0; padding: 0;"> No</label>
-                    </div>
-                `;
-            }
-
-            div.innerHTML = `
-                <div style="font-weight: 600; font-size: 0.85rem; color: var(--dark);">${opt.label}</div>
-                <div>${inputHtml}</div>
-                <button type="button" onclick="removePerfConfig('${opt.id}')" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px; border-radius: 4px;" title="Remove this configuration">
-                    <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                </button>
-            `;
-
-            container.appendChild(div);
-            lucide.createIcons();
-
-            if (addedPerfs.length >= perfOptions.length) {
-                document.getElementById('add-perf-btn').style.display = 'none';
-            }
-        }
-
-        function removePerfConfig(id) {
-            const row = document.getElementById('perf_row_' + id);
-            if (row) row.remove();
-            addedPerfs = addedPerfs.filter(pId => pId !== id);
-            document.getElementById('add-perf-btn').style.display = 'inline-flex';
-        }
 
         function initializeCustomSelect(selectElement) {
             if (selectElement.nextElementSibling && selectElement.nextElementSibling.classList.contains('select-selected')) return;
@@ -2602,40 +4607,6 @@
             const paramRadio = document.querySelector('input[name="param_type"]:checked');
             if (paramRadio) paramType = paramRadio.value;
 
-            const perfConfigs = {};
-
-            perfOptions.forEach(opt => {
-
-                if (opt.type === 'number') {
-
-                    const valueEl = document.getElementById(`perf_${opt.id}`);
-                    const spawnEl = document.getElementById(`perf_${opt.id}_spawn`);
-                    const durationEl = document.getElementById(`perf_${opt.id}_duration`);
-                    const unitEl = document.getElementById(`perf_${opt.id}_unit`);
-                    if (valueEl) {
-                        perfConfigs[opt.id] = valueEl.value;
-                    }
-                    if (durationEl) {
-                        perfConfigs[`${opt.id}_duration`] = durationEl.value;
-                    }
-                    if (unitEl) {
-                        perfConfigs[`${opt.id}_unit`] = unitEl.value;
-                    }
-                    if (spawnEl) {
-                        perfConfigs[`${opt.id}_spawn`] = spawnEl.value;
-                    }
-                } else if (opt.type === 'radio') {
-                    const selected = document.querySelector(
-                        `input[name="perf_${opt.id}"]:checked`
-                    );
-                    if (selected) {
-                        perfConfigs[opt.id] = selected.value;
-                    }
-                }
-            });
-            const cachingEl = document.querySelector('input[name="perf_caching"]:checked');
-            if (cachingEl) perfConfigs.caching = cachingEl.value;
-
             const submitBtn = form.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
@@ -2666,12 +4637,10 @@
                             field_configs: fieldConfigs,
                             baseUrl: envUrl,
                             param_type: paramType,
-                            perf_configs: perfConfigs
                         })
                     });
                     const data = await res.json();
                     if (data.success) {
-                        const performanceConfigs = buildPerformanceConfigs(perfConfigs);
 
                         data.test_cases.forEach((tc) => {
 
@@ -2679,93 +4648,24 @@
                                 tc.baseUrl = envUrl;
                             }
 
-                            const scenario = String(tc.scenario || '').toLowerCase();
-                            const tcType = String(tc.type || '').toLowerCase();
+                            const savedPerformanceConfig =
+                                getSavedPerformanceConfigForTestCase(tc);
 
-                            let performanceType = null;
+                            if (savedPerformanceConfig) {
 
-                            // -----------------------------
-                            // Identify scenario type
-                            // -----------------------------
-
-                            if (
-                                scenario.includes('rate limit') ||
-                                scenario.includes('rate limiting') ||
-                                tcType.includes('rate limit') ||
-                                String(tc.expected || '').includes('429')
-                            ) {
-                                performanceType = 'rate_limit';
-                            }
-                            else if (
-                                scenario.includes('load factor') ||
-                                scenario.includes('load test') ||
-                                scenario.includes('response time') ||
-                                tcType.includes('load factor')
-                            ) {
-                                performanceType = 'load_factor';
-                            }
-                            else if (
-                                scenario.includes('stress factor') ||
-                                scenario.includes('stress test') ||
-                                scenario.includes('stress') ||
-                                tcType.includes('stress')
-                            ) {
-                                performanceType = 'stress_factor';
-                            }
-                            else if (
-                                scenario.includes('endurance') ||
-                                scenario.includes('soak') ||
-                                tcType.includes('endurance')
-                            ) {
-                                performanceType = 'endurance';
-                            }
-                            else if (
-                                scenario.includes('caching') ||
-                                scenario.includes('cache') ||
-                                scenario.includes('etag') ||
-                                scenario.includes('cache-control') ||
-                                scenario.includes('conditional get')
-                            ) {
-                                performanceType = 'caching';
-                            }
-                            // -----------------------------
-                            // Assign matching configuration
-                            // -----------------------------
-
-                            if (performanceType === 'caching') {
-
-                                const cachingValue = perfConfigs.caching;
-
-                                if (cachingValue !== undefined && cachingValue !== '') {
-                                    tc.perf_config = {
-                                        type: 'caching',
-                                        value: cachingValue
-                                    };
-                                } else {
-                                    tc.perf_config = {};
-                                }
-
-                            }
-                            else if (performanceType) {
-
-                                const config = performanceConfigs.find(
-                                    cfg => cfg.type === performanceType
-                                );
-
-                                if (config) {
-                                    tc.perf_config = {
-                                        type: config.type,
-                                        value: config.value,
-                                        spawn: config.spawn,
-                                        duration: config.duration,
-                                        unit: config.unit
-                                    };
-                                } else {
-                                    tc.perf_config = {};
-                                }
-
-                            }
-                            else {
+                                tc.perf_config = {
+                                    type:
+                                        savedPerformanceConfig.type,
+                                    value:
+                                        savedPerformanceConfig.value,
+                                    spawn:
+                                        savedPerformanceConfig.spawn,
+                                    duration:
+                                        savedPerformanceConfig.duration,
+                                    unit:
+                                        savedPerformanceConfig.unit
+                                };
+                            } else {
                                 tc.perf_config = {};
                             }
 
@@ -2774,7 +4674,6 @@
                                 {
                                     scenario: tc.scenario,
                                     testType: tc.type,
-                                    performanceType: performanceType,
                                     perf_config: tc.perf_config
                                 }
                             );
@@ -4949,10 +6848,69 @@ ${sampleOutput}
                     const maxMs = metrics.max_ms || "0";
                     const rps = metrics.rps || "0";
 
-                    totalReqs += parseInt(reqMade);
-                    totalFails += parseInt(failCount);
+                    const formatPercentile = (value) => {
 
-                    const isPass = parseInt(failCount) === 0;
+                        if (
+                            value === undefined ||
+                            value === null ||
+                            value === "" ||
+                            String(value).toUpperCase() === "N/A"
+                        ) {
+                            return "N/A";
+                        }
+
+                        const numeric = Number(value);
+
+                        if (!Number.isFinite(numeric)) {
+                            return "N/A";
+                        }
+
+                        return Number.isInteger(numeric)
+                            ? String(numeric)
+                            : numeric.toFixed(2);
+                    };
+
+                    const p50 = formatPercentile(
+                        metrics.p50_ms
+                    );
+
+                    const p95 = formatPercentile(
+                        metrics.p95_ms
+                    );
+
+                    const p99 = formatPercentile(
+                        metrics.p99_ms
+                    );
+
+                    const p50Status =
+                        metrics.p50_pass
+                            ? "✅"
+                            : "❌";
+
+                    const p95Status =
+                        metrics.p95_pass
+                            ? "✅"
+                            : "❌";
+
+                    const p99Status =
+                        metrics.p99_pass
+                            ? "✅"
+                            : "❌";
+
+                    const percentilePassed =
+                        metrics.percentile_passed === true;
+
+                    totalReqs +=
+                        parseInt(reqMade, 10) || 0;
+
+                    totalFails +=
+                        parseInt(failCount, 10) || 0;
+
+
+                    const isPass =
+                        (parseInt(failCount, 10) || 0) === 0
+                        &&
+                        percentilePassed;
                     if (isPass) passed++;
 
                     if (tcIndex !== -1) {
@@ -4976,8 +6934,33 @@ ${sampleOutput}
                     if (failCount > 0 && failureDetails.length > 0) failureText = `\n\n❌ Failure Reasons:\n• ` + failureDetails.join(`\n• `);
                     else if (failCount > 0) failureText = `\n\n❌ Failure Reasons:\n• Unknown timeouts or connection resets occurred during the load test.`;
 
-                    const details = `🚀 Load Test Execution Complete\nTarget: ${displayUrl} [${activeMethod}]\nScenario: ${tc.scenario}\nConfiguration: ${users} Users | Spawn: ${spawnRate}/sec | Duration: ${runTime}\n\nMetrics:\n• Total Requests: ${reqMade}\n• Failures: ${failCount}\n• Average Latency: ${avgMs} ms\n• Max Latency: ${maxMs} ms\n• Throughput: ${rps} req/sec${failureText}\n\nActual Output (Sample Response):\n${sampleOutput}`;
+                    const percentileResult =
+                        percentilePassed
+                            ? "PASS"
+                            : "FAIL";
 
+
+                    const details = `🚀 Load Test Execution Complete
+Target: ${displayUrl} [${activeMethod}]
+Scenario: ${tc.scenario}
+Configuration: ${users} Users | Spawn: ${spawnRate}/sec | Duration: ${runTime}
+
+Metrics:
+• Total Requests: ${reqMade}
+• Failures: ${failCount}
+• Average Latency: ${avgMs} ms
+• Max Latency: ${maxMs} ms
+• Throughput: ${rps} req/sec${failureText}
+
+Percentile Metrics:
+• P50 = ${p50} ms (expected: P50 < 500 ms) ${p50Status}
+• P95 = ${p95} ms (expected: P95 < 1,000 ms) ${p95Status}
+• P99 = ${p99} ms (expected: P99 < 2,000 ms) ${p99Status}
+
+Percentile Result: ${percentileResult}
+
+Actual Output (Sample Response):
+${sampleOutput}`;
                     item.innerHTML = `
                         <div class="result-header">
                             <span class="badge ${isPass ? 'badge-success' : 'badge-danger'}">${isPass ? 'PASS' : 'FAIL'}</span>
