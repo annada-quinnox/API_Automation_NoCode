@@ -9,6 +9,7 @@ import uuid
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
+from urllib.parse import urlparse
 
 
 class TestCaseDatabase:
@@ -82,22 +83,32 @@ class TestCaseDatabase:
             Valid SQL Server table name
         """
         # Normalize base_url: remove protocol, replace special chars
-        if base_url:
-            # Remove http:// or https://
-            if base_url.startswith('http://'):
-                base_url = base_url[7:]
-            elif base_url.startswith('https://'):
-                base_url = base_url[8:]
+        # if base_url:
+        #     # Remove http:// or https://
+        #     if base_url.startswith('http://'):
+        #         base_url = base_url[7:]
+        #     elif base_url.startswith('https://'):
+        #         base_url = base_url[8:]
             
-            # Replace dots, slashes, and other special chars with underscores
-            base_url_clean = ''.join(c if c.isalnum() else '_' for c in base_url)
-            # Remove consecutive underscores
-            while '__' in base_url_clean:
-                base_url_clean = base_url_clean.replace('__', '_')
-            # Remove leading/trailing underscores
-            base_url_clean = base_url_clean.strip('_')
+        #     # Replace dots, slashes, and other special chars with underscores
+        #     base_url_clean = ''.join(c if c.isalnum() else '_' for c in base_url)
+        #     # Remove consecutive underscores
+        #     while '__' in base_url_clean:
+        #         base_url_clean = base_url_clean.replace('__', '_')
+        #     # Remove leading/trailing underscores
+        #     base_url_clean = base_url_clean.strip('_')
+        # else:
+        #     base_url_clean = 'default'
+
+        if base_url:
+        # Parse the URL
+            hostname = urlparse(base_url).hostname
+
+        if hostname:
+        # Extract the first part of the hostname
+            url_name = hostname.split('.')[0]
         else:
-            base_url_clean = 'default'
+            url_name = 'default'
         
         # Normalize endpoint: remove leading slash, replace special chars
         if endpoint:
