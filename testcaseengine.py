@@ -1,11 +1,13 @@
 import json
 import re
 
+
 def get_required_status(config):
     req = config.get('required', False)
     if isinstance(req, str):
         return req.lower() == 'required'
     return bool(req)
+
 
 def cast_value(value, target_type):
     if value is None:
@@ -25,13 +27,18 @@ def cast_value(value, target_type):
         pass
     return value
 
+
 class GenerateTestcases:
     def __init__(self):
         self.test_cases = []
-    
+
     def get_test_cases(self):
         return self.test_cases
-    
+
+    def _replace_path_parameter(self, endpoint, parameter_name, value):
+        placeholder = '{' + str(parameter_name) + '}'
+        return endpoint.replace(placeholder, str(value), 1)
+
     def generate_test_cases(self, data):
         method = data.get('method', 'GET')
         endpoint = data.get('endpoint', '/api/test')
@@ -39,28 +46,218 @@ class GenerateTestcases:
         field_name = data.get('field_name', '').strip()
         search_string = data.get('search_string', '')
         field_configs = data.get('field_configs', {})
+        path_parameter_values = data.get('path_parameter_values', {})
         base_url = data.get('baseUrl') or data.get('base_url') or ""
         param_type = data.get('param_type', 'query')
-        
+
         print(f"Base URL received for generation: {base_url}")
-        
+
         if search_string and method.upper() in ['GET', 'DELETE']:
             self.test_cases = self._generate_query_param_testcases(endpoint, search_string, field_name, method, param_type)
         else:
-            self.test_cases = self._generate_testcases_internal(method, endpoint, payload_json, field_configs)
-
+            self.test_cases = self._generate_testcases_internal(method, endpoint, payload_json, field_configs, path_parameter_values)
+            # -------------------------------------------------------------
+        # Stage 1 - Business Performance Test Matrix
+        # Add the Excel-defined performance scenarios without
+        # replacing existing method-specific performance tests.
+        # -------------------------------------------------------------
+        if method.upper() in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']:
+            self.test_cases.extend(self._generate_performance_matrix_testcases(method))
         # Ensure each test case has the baseUrl, endpoint, and method for persistence
         for tc in self.test_cases:
             tc['baseUrl'] = base_url
             tc['endpoint'] = endpoint
             if 'method' not in tc:
                 tc['method'] = method
-            tc['field_configs'] = json.loads(
-                json.dumps(field_configs)
-            )
+            tc['field_configs'] = json.loads(json.dumps(field_configs))
+            tc['path_parameter_values'] = json.loads(json.dumps(path_parameter_values))
         return self.test_cases
-    
-    def _generate_testcases_internal(self, method, endpoint, payload_json, field_configs={}):
+
+    def _generate_performance_matrix_testcases(self, method):
+        """
+        Generate the business-defined performance test matrix
+        from the performance requirements.
+
+        These cases are additive and do not replace any existing
+        method-specific performance testcases.
+        """
+
+        method = method.upper()
+
+        if method not in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']:
+            return []
+
+        if method == 'GET':
+            volume_input = ("Large response dataset / large result set, "
+                            "duration: 30 minutes")
+            concurrency_input = ("High simultaneous GET requests, "
+                                 "duration: 10 minutes")
+
+        elif method == 'POST':
+            volume_input = ("Large request payload/data, "
+                            "duration: 30 minutes")
+            concurrency_input = ("High simultaneous POST requests, "
+                                 "duration: 10 minutes")
+        elif method == 'PUT':
+            volume_input = ("Large request payload/data, "
+                            "duration: 30 minutes")
+            concurrency_input = ("High simultaneous PUT requests, "
+                                 "duration: 10 minutes")
+        elif method == 'PATCH':
+            volume_input = ("Large request payload/data, "
+                            "duration: 30 minutes")
+            concurrency_input = ("High simultaneous PATCH requests, "
+                                 "duration: 10 minutes")
+        else:  # DELETE
+            volume_input = ("Large dataset / large resource set, "
+                            "duration: 30 minutes")
+            concurrency_input = ("High simultaneous DELETE requests, "
+                                 "duration: 10 minutes")
+        return [
+            # ---------------------------------------------------------
+            # PERF-01 - Baseline
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_BASELINE_01",
+                "type": "Performance",
+                "scenario": f"PERF-01 - Baseline performance for {method}",
+                "input": ("Users: 5; "
+                          "Ramp-up: 1 user/sec; "
+                          "Duration: 5 minutes"),
+                "expected": ("Capture P50, P95, P99, RPS, Error %, "
+                             "2xx, 4xx, 5xx and 429")
+            },
+            # ---------------------------------------------------------
+            # PERF-02 - Expected Load
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_EXPECTED_LOAD_02",
+                "type": "Performance",
+                "scenario": f"PERF-02 - Expected Load for {method}",
+                "input": ("Users: 25; "
+                          "Ramp-up: 5 users/sec; "
+                          "Duration: 15 minutes"),
+                "expected": ("P95 within SLA; "
+                             "no unexpected 5xx; "
+                             "stable throughput; "
+                             "stable response time")
+            },
+            # ---------------------------------------------------------
+            # PERF-03 - Peak Load
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_PEAK_03",
+                "type": "Performance",
+                "scenario": f"PERF-03 - Peak Load for {method}",
+                "input": ("Users: 50; "
+                          "Ramp-up: 10 users/sec; "
+                          "Duration: 15 minutes"),
+                "expected": ("P95 within SLA; "
+                             "no unexpected 5xx; "
+                             "stable throughput; "
+                             "stable response time")
+            },
+            # ---------------------------------------------------------
+            # PERF-04 - Stress / Breaking Point
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_STRESS_04",
+                "type": "Performance",
+                "scenario": f"PERF-04 - Stress / Breaking Point for {method}",
+                "input": ("Progressive load: "
+                          "25 -> 50 -> 100 -> 150 -> "
+                          "200 -> 250 -> 300 users; "
+                          "Duration: 20 minutes"),
+                "expected": ("Monitor users, RPS, P50, P95, P99, "
+                             "Error Rate, 429 and 5xx; "
+                             "identify the breaking point from increasing "
+                             "concurrency, decreasing throughput and rising latency")
+            },
+            # ---------------------------------------------------------
+            # PERF-05 - Spike
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_SPIKE_05",
+                "type": "Performance",
+                "scenario": f"PERF-05 - Spike Test for {method}",
+                "input": ("Sudden traffic spike: "
+                          "10 -> 200 users; "
+                          "then drop back: 200 -> 10 users; "
+                          "Duration: 5 minutes"),
+                "expected": ("Measure time to degradation, maximum RPS, "
+                             "P95/P99, 5xx, 429 and recovery time; "
+                             "performance should return toward baseline")
+            },
+
+            # ---------------------------------------------------------
+            # PERF-06 - Soak / Endurance
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_SOAK_06",
+                "type": "Performance",
+                "scenario": f"PERF-06 - Soak / Endurance for {method}",
+                "input": ("Users: 50; "
+                          "Duration: 1-4 hours"),
+                "expected": ("Monitor response-time trend, memory, CPU, "
+                             "connection pool, thread pool, DB connections, "
+                             "5xx, 429 and throughput; "
+                             "no continuous memory growth or throughput degradation")
+            },
+
+            # ---------------------------------------------------------
+            # PERF-07 - Volume
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_VOLUME_07",
+                "type": "Performance",
+                "scenario": f"PERF-07 - Volume / Data Scalability for {method}",
+                "input": volume_input,
+                "expected": ("Validate performance with large payload/data; "
+                             "monitor latency, throughput and error rate")
+            },
+
+            # ---------------------------------------------------------
+            # PERF-08 - Rate Limit
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_RATE_LIMIT_08",
+                "type": "Performance",
+                "scenario": (f"PERF-08 - Rate-Limit Validation for {method} "
+                             "(if throttling is configured)"),
+                "input": ("Test increasing request rate: "
+                          "80, 90, 100, 110, 150 and 200 RPM; "
+                          "Duration: 10 minutes"),
+                "expected": ("< threshold -> 2xx; "
+                             "> threshold -> 429 Too Many Requests")
+            },
+
+            # ---------------------------------------------------------
+            # PERF-09 - Recovery
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_RECOVERY_09",
+                "type": "Performance",
+                "scenario": f"PERF-09 - Recovery Test for {method}",
+                "input": ("Overload -> normal load; "
+                          "Duration: 10 minutes"),
+                "expected": ("Verify response time, throughput and error rate "
+                             "return toward the normal performance profile")
+            },
+
+            # ---------------------------------------------------------
+            # PERF-10 - Concurrency
+            # ---------------------------------------------------------
+            {
+                "id": f"{method}_PERF_CONCURRENCY_10",
+                "type": "Performance",
+                "scenario": f"PERF-10 - Concurrency Test for {method}",
+                "input": concurrency_input,
+                "expected": ("Handle high simultaneous requests without "
+                             "race-condition symptoms, deadlocks or unexpected failures")
+            }
+        ]
+
+    def _generate_testcases_internal(self, method, endpoint, payload_json, field_configs={}, path_parameter_values=None):
         try:
             payload = json.loads(payload_json) if payload_json else {}
         except:
@@ -68,7 +265,7 @@ class GenerateTestcases:
 
         testcases = []
         counter = {"id": 1}
-        
+
         if method.upper() == 'DELETE':
             testcases = self._generate_delete_testcases(endpoint, testcases, counter)
         elif method.upper() == 'POST':
@@ -78,31 +275,31 @@ class GenerateTestcases:
         elif method.upper() == 'PATCH':
             testcases = self._generate_patch_testcases(endpoint, testcases, counter, payload, field_configs)
         elif method.upper() == 'GET':
-            testcases = self._generate_get_testcases(endpoint, testcases, counter, payload, field_configs)
+            testcases = self._generate_get_testcases(endpoint, testcases, counter, payload, field_configs, path_parameter_values)
         else:
             testcases = self._generate_default_testcases(method, payload)
-        
+
         if payload and method.upper() not in ['POST', 'PUT', 'PATCH']:
             testcases.extend(self._generate_payload_specific_tests(payload, method.upper(), field_configs))
-        
+
         return testcases
-    
+
     def _generate_payload_specific_tests(self, payload, method, field_configs={}):
         tests = []
         counter = {"id": 100}
-        
+
         flattened = flatten(payload)
         for field, value in flattened.items():
             config = field_configs.get(field, {})
             field_type = config.get('type')
             required = get_required_status(config)
-            
+
             if not field_type:
                 field_type = detect_field_type(field, value)
             else:
                 # Cast value to the type selected by user for realism
                 value = cast_value(value, field_type)
-            
+
             field_tests = generate_field_specific_tests(field, field_type, value, counter, method, required)
             for test in field_tests:
                 if isinstance(test.get('input'), dict):
@@ -113,9 +310,9 @@ class GenerateTestcases:
                         new_input = set_field(new_input, k, v)
                     test['input'] = json.dumps(new_input)
                 tests.append(test)
-        
+
         return tests
-    
+
     def _generate_delete_testcases(self, endpoint, testcases, counter):
         # 1. Positive Tests (1 scenario)
         testcases.append({
@@ -400,26 +597,20 @@ class GenerateTestcases:
         })
 
         return testcases
-    
+
     def _generate_payload_based_testcases(self, endpoint, testcases, counter, payload, field_configs={}, method_name="POST"):
         tests = []
         test_counter = {"id": 1}
-        
+
         verb = "Create" if method_name == "POST" else "Update"
         success_code = "201 Created / 200 OK" if method_name == "POST" else "200 OK"
 
         if not payload:
-            return [{
-                "id": f"{method_name}_01",
-                "type": "Positive",
-                "scenario": f"{verb} record with valid payload",
-                "input": "{}",
-                "expected": success_code
-            }]
-        
+            return [{"id": f"{method_name}_01", "type": "Positive", "scenario": f"{verb} record with valid payload", "input": "{}", "expected": success_code}]
+
         flattened = flatten(payload)
         fields_list = list(flattened.keys())
-        
+
         tests.append({
             "id": f"{method_name}_{test_counter['id']:02d}",
             "type": "Positive",
@@ -428,10 +619,10 @@ class GenerateTestcases:
             "expected": success_code
         })
         test_counter['id'] += 1
-        
+
         # Determine required fields from config or assume all are required
         required_fields = [f for f in fields_list if get_required_status(field_configs.get(f, {}))]
-        
+
         if required_fields:
             partial_payload_obj = {}
             for k in required_fields:
@@ -440,7 +631,7 @@ class GenerateTestcases:
                 if conf.get('type'):
                     val = cast_value(val, conf.get('type'))
                 partial_payload_obj = set_field(partial_payload_obj, k, val)
-            
+
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
                 "type": "Positive",
@@ -449,17 +640,17 @@ class GenerateTestcases:
                 "expected": success_code
             })
             test_counter['id'] += 1
-        
+
         for field, value in flattened.items():
             config = field_configs.get(field, {})
             field_type = config.get('type')
             is_required = get_required_status(config)
-            
+
             if not field_type:
                 field_type = detect_field_type(field, value)
             else:
                 value = cast_value(value, field_type)
-            
+
             # Special handling for PATCH: missing fields are positive (partial update)
             if method_name == "PATCH":
                 tests.append({
@@ -487,7 +678,7 @@ class GenerateTestcases:
                         "expected": success_code
                     })
             test_counter['id'] += 1
-            
+
             # Null value
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
@@ -497,7 +688,7 @@ class GenerateTestcases:
                 "expected": "400 Bad Request" if is_required or field_type not in ['string', 'email', 'url', 'password'] else success_code
             })
             test_counter['id'] += 1
-            
+
             # Empty string
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
@@ -507,7 +698,7 @@ class GenerateTestcases:
                 "expected": "400 Bad Request" if is_required or field_type != 'string' else success_code
             })
             test_counter['id'] += 1
-            
+
             # Type mismatch
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
@@ -527,7 +718,7 @@ class GenerateTestcases:
                     "expected": "400 Bad Request"
                 })
                 test_counter['id'] += 1
-            
+
             field_tests = generate_field_specific_tests(field, field_type, value, test_counter, method_name, is_required)
             for t in field_tests:
                 if isinstance(t.get('input'), dict):
@@ -536,7 +727,7 @@ class GenerateTestcases:
                         new_input = set_field(new_input, f, v)
                     t['input'] = json.dumps(new_input)
                 tests.append(t)
-            
+
             if field_type == 'email':
                 tests.append({
                     "id": f"{method_name}_{test_counter['id']:02d}",
@@ -546,7 +737,7 @@ class GenerateTestcases:
                     "expected": "409 Conflict"
                 })
                 test_counter['id'] += 1
-            
+
             # Security tests
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
@@ -556,7 +747,7 @@ class GenerateTestcases:
                 "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
-            
+
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
                 "type": "Security",
@@ -565,7 +756,7 @@ class GenerateTestcases:
                 "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
-            
+
             tests.append({
                 "id": f"{method_name}_{test_counter['id']:02d}",
                 "type": "Security",
@@ -574,28 +765,63 @@ class GenerateTestcases:
                 "expected": "400 Bad Request"
             })
             test_counter['id'] += 1
-        
+
         # Payload level validations
-        tests.extend([
-            {"id": f"{method_name}_{test_counter['id']:02d}", "type": "Validation", "scenario": "Empty JSON payload", "input": "{}", "expected": "400 Bad Request"},
-            {"id": f"{method_name}_{test_counter['id']+1:02d}", "type": "Validation", "scenario": "Malformed JSON", "input": "{invalid json}", "expected": "400 Bad Request"},
-            {"id": f"{method_name}_{test_counter['id']+2:02d}", "type": "Validation", "scenario": "Extra unknown fields", "input": json.dumps({**payload, "unknown_field": "value"}), "expected": "400 Bad Request"}
-        ])
+        tests.extend([{
+            "id": f"{method_name}_{test_counter['id']:02d}",
+            "type": "Validation",
+            "scenario": "Empty JSON payload",
+            "input": "{}",
+            "expected": "400 Bad Request"
+        }, {
+            "id": f"{method_name}_{test_counter['id']+1:02d}",
+            "type": "Validation",
+            "scenario": "Malformed JSON",
+            "input": "{invalid json}",
+            "expected": "400 Bad Request"
+        }, {
+            "id": f"{method_name}_{test_counter['id']+2:02d}",
+            "type": "Validation",
+            "scenario": "Extra unknown fields",
+            "input": json.dumps({
+                **payload, "unknown_field": "value"
+            }),
+            "expected": "400 Bad Request"
+        }])
         test_counter['id'] += 3
-        
+
         # Standard Headers/Auth/RateLimit
-        tests.extend([
-            {"id": f"{method_name}_{test_counter['id']:02d}", "type": "Header", "scenario": "Missing Content-Type header", "input": json.dumps(payload), "expected": "415 Unsupported Media Type"},
-            {"id": f"{method_name}_{test_counter['id']+1:02d}", "type": "Auth", "scenario": "Missing authorization token", "input": json.dumps(payload), "expected": "401 Unauthorized"},
-            {"id": f"{method_name}_{test_counter['id']+2:02d}", "type": "Auth", "scenario": "Invalid token", "input": json.dumps(payload), "expected": "401 Unauthorized"},
-            {"id": f"{method_name}_{test_counter['id']+3:02d}", "type": "RateLimit", "scenario": "Exceed rate limit", "input": json.dumps(payload), "expected": "429 Too Many Requests"},
-            {"id": f"{method_name}_{test_counter['id']+4:02d}", "type": "Performance", "scenario": "Normal load response time", "input": json.dumps(payload), "expected": "<300 ms latency"},
-            {"id": f"{method_name}_{test_counter['id']+5:02d}", "type": "Integration", "scenario": f"{verb} and verify record", "input": json.dumps(payload), "expected": success_code}
-        ])
-        test_counter['id'] += 6
-        
+        # Standard Headers/Auth
+        tests.extend([{
+            "id": f"{method_name}_{test_counter['id']:02d}",
+            "type": "Header",
+            "scenario": "Missing Content-Type header",
+            "input": json.dumps(payload),
+            "expected": "415 Unsupported Media Type"
+        }, {
+            "id": f"{method_name}_{test_counter['id']+1:02d}",
+            "type": "Auth",
+            "scenario": "Missing authorization token",
+            "input": json.dumps(payload),
+            "expected": "401 Unauthorized"
+        }, {
+            "id": f"{method_name}_{test_counter['id']+2:02d}",
+            "type": "Auth",
+            "scenario": "Invalid token",
+            "input": json.dumps(payload),
+            "expected": "401 Unauthorized"
+        }, {
+            "id": f"{method_name}_{test_counter['id']+3:02d}",
+            "type": "Integration",
+            "scenario": f"{verb} and verify record",
+            "input": json.dumps(payload),
+            "expected": success_code
+        }])
+
+        test_counter['id'] += 4
+
         return tests
-    
+
     def _generate_post_testcases(self, endpoint, testcases, counter, payload, field_configs={}, method_name="POST"):
         return self._generate_payload_based_testcases(endpoint, testcases, counter, payload, field_configs, method_name)
 
@@ -603,128 +829,99 @@ class GenerateTestcases:
         if payload:
             return self._generate_payload_based_testcases(endpoint, testcases, counter, payload, field_configs, "PUT")
         return [{"id": "PUT_01", "type": "Positive", "scenario": "Full resource update", "input": "Valid JSON", "expected": "200 OK"}]
-    
+
     def _generate_patch_testcases(self, endpoint, testcases, counter, payload=None, field_configs={}):
         if payload:
             return self._generate_payload_based_testcases(endpoint, testcases, counter, payload, field_configs, "PATCH")
         return [{"id": "PATCH_01", "type": "Positive", "scenario": "Partial update", "input": "Valid JSON", "expected": "200 OK"}]
-    
-    def _generate_get_testcases(self, endpoint, testcases, counter, payload, field_configs={}):
+
+    def _generate_get_testcases(self, endpoint, testcases, counter, payload, field_configs={}, path_parameter_values=None):
         tests = []
         test_counter = {"id": 1}
-        
+
         # Determine if there are path parameters
         path_params = re.findall(r"\{(\w+)\}", endpoint)
-        
+
         # 1. Common GET API Test Cases
         self._add_common_get_tests(tests, test_counter)
-        
+
         # 2. GET WITHOUT Parameters
         if not payload and not path_params:
             self._add_get_no_params_tests(tests, test_counter, endpoint)
-        
+
         # 3. GET WITH Path Parameters
         if path_params:
-            self._add_get_path_params_tests(tests, test_counter, endpoint, path_params)
-            
+            self._add_get_path_params_tests(tests, test_counter, endpoint, path_params, path_parameter_values)
+
         # 4. GET WITH Query Parameters
         if payload:
             self._add_get_query_params_tests(tests, test_counter, payload)
-            
+
         # 5. Authorization & Access Control
         self._add_auth_access_tests(tests, test_counter)
-        
+
         # 6. Performance & Reliability
         self._add_performance_reliability_tests(tests, test_counter)
-        
+
         # 7. Error Handling
         self._add_error_handling_tests(tests, test_counter)
-        
+
         # 8. Compatibility
         self._add_compatibility_tests(tests, test_counter)
 
         for tc in tests:
             tc["field_configs"] = field_configs
-        
+
         return tests
 
     def _add_common_get_tests(self, tests, test_counter):
         # Functional
-        common_functional = [
-            ("Verify API returns 200 OK for valid request", "Valid request", "200 OK"),
-            ("Verify response body is not empty", "Valid request", "Response body contains data"),
-            ("Verify response matches contract/schema", "Valid request", "Schema validation passes"),
-            ("Verify correct Content-Type (application/json)", "Valid request", "Content-Type: application/json"),
-            ("Verify response time is within SLA", "Valid request", "Response time < 500ms"),
-            ("Verify correct character encoding", "Valid request", "UTF-8 encoding"),
-            ("Verify response does not modify server state", "Valid request", "No data change on server")
-        ]
+        common_functional = [("Verify API returns 200 OK for valid request", "Valid request", "200 OK"),
+                             ("Verify response body is not empty", "Valid request", "Response body contains data"),
+                             ("Verify response matches contract/schema", "Valid request", "Schema validation passes"),
+                             ("Verify correct Content-Type (application/json)", "Valid request", "Content-Type: application/json"),
+                             ("Verify response time is within SLA", "Valid request", "Response time < 500ms"),
+                             ("Verify correct character encoding", "Valid request", "UTF-8 encoding"),
+                             ("Verify response does not modify server state", "Valid request", "No data change on server")]
         for scenario, inp, exp in common_functional:
-            tests.append({
-                "id": f"GET_COM_FUN_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_COM_FUN_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # Security
-        common_security = [
-            ("Verify API rejects request without authentication", "Missing Auth header", "401 Unauthorized"),
-            ("Verify API rejects request with invalid token", "Invalid token", "401 Unauthorized"),
-            ("Verify API does not expose sensitive fields", "Valid request", "No password/SSN in response"),
-            ("Verify API is protected against IDOR", "Request other user's resource", "403 Forbidden / 404 Not Found"),
-            ("Verify HTTPS is enforced", "HTTP request", "301 Redirect to HTTPS / 403 Forbidden")
-        ]
+        common_security = [("Verify API rejects request without authentication", "Missing Auth header", "401 Unauthorized"),
+                           ("Verify API rejects request with invalid token", "Invalid token", "401 Unauthorized"),
+                           ("Verify API does not expose sensitive fields", "Valid request", "No password/SSN in response"),
+                           ("Verify API is protected against IDOR", "Request other user's resource", "403 Forbidden / 404 Not Found"),
+                           ("Verify HTTPS is enforced", "HTTP request", "301 Redirect to HTTPS / 403 Forbidden")]
         for scenario, inp, exp in common_security:
-            tests.append({
-                "id": f"GET_COM_SEC_{test_counter['id']:02d}",
-                "type": "Security",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_COM_SEC_{test_counter['id']:02d}", "type": "Security", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # Headers
-        common_headers = [
-            ("Verify required headers are mandatory", "Missing required header (e.g. X-API-KEY)", "400 Bad Request / 401 Unauthorized"),
-            ("Verify unsupported headers are ignored", "Send extra header 'X-Custom: value'", "200 OK, header ignored"),
-            ("Verify correct CORS headers", "OPTIONS request / Origin header", "Access-Control-Allow-Origin present")
-        ]
+        common_headers = [("Verify required headers are mandatory", "Missing required header (e.g. X-API-KEY)", "400 Bad Request / 401 Unauthorized"),
+                          ("Verify unsupported headers are ignored", "Send extra header 'X-Custom: value'", "200 OK, header ignored"),
+                          ("Verify correct CORS headers", "OPTIONS request / Origin header", "Access-Control-Allow-Origin present")]
         for scenario, inp, exp in common_headers:
-            tests.append({
-                "id": f"GET_COM_HDR_{test_counter['id']:02d}",
-                "type": "Header",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_COM_HDR_{test_counter['id']:02d}", "type": "Header", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
     def _add_get_no_params_tests(self, tests, test_counter, endpoint):
-        no_params_cases = [
-            ("Positive", "Verify all records are returned", f"GET {endpoint}", "200 OK, full list returned"),
-            ("Positive", "Verify pagination defaults are applied", f"GET {endpoint}", "200 OK, default page 1, size 10"),
-            ("Positive", "Verify response ordering (default sort)", f"GET {endpoint}", "200 OK, sorted by created date"),
-            ("Positive", "Verify empty dataset returns valid response", f"GET {endpoint} (no data)", "200 OK, empty list []"),
-            ("Negative", "Verify unsupported HTTP method returns 405", f"POST {endpoint}", "405 Method Not Allowed"),
-            ("Negative", "Verify invalid endpoint returns 404", f"GET {endpoint}/invalid", "404 Not Found"),
-            ("Negative", "Verify server handles large data safely", f"GET {endpoint} (large dataset)", "200 OK, handled gracefully / 503 if timeout")
-        ]
+        no_params_cases = [("Positive", "Verify all records are returned", f"GET {endpoint}", "200 OK, full list returned"),
+                           ("Positive", "Verify pagination defaults are applied", f"GET {endpoint}", "200 OK, default page 1, size 10"),
+                           ("Positive", "Verify response ordering (default sort)", f"GET {endpoint}", "200 OK, sorted by created date"),
+                           ("Positive", "Verify empty dataset returns valid response", f"GET {endpoint} (no data)", "200 OK, empty list []"),
+                           ("Negative", "Verify unsupported HTTP method returns 405", f"POST {endpoint}", "405 Method Not Allowed"),
+                           ("Negative", "Verify invalid endpoint returns 404", f"GET {endpoint}/invalid", "404 Not Found"),
+                           ("Negative", "Verify server handles large data safely", f"GET {endpoint} (large dataset)",
+                            "200 OK, handled gracefully / 503 if timeout")]
         for t_type, scenario, inp, exp in no_params_cases:
-            tests.append({
-                "id": f"GET_NOPARAM_{test_counter['id']:02d}",
-                "type": t_type,
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_NOPARAM_{test_counter['id']:02d}", "type": t_type, "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
-    def _add_get_path_params_tests(self, tests, test_counter, endpoint, path_params):
+    def _add_get_path_params_tests(self, tests, test_counter, endpoint, path_params, path_parameter_values=None):
+        path_parameter_values = path_parameter_values or {}
         for param in path_params:
+            configured_value = path_parameter_values.get(param, "123")
             # Positive
             pos_cases = [
                 (f"Verify valid {param} returns correct record", f"{param}=123", "200 OK, correct resource"),
@@ -733,55 +930,33 @@ class GenerateTestcases:
                 (f"Verify response contains correct resource ID for {param}", f"{param}=123", f"Response contains {param}=123")
             ]
             for scenario, inp, exp in pos_cases:
-                tests.append({
-                    "id": f"GET_PATH_POS_{test_counter['id']:02d}",
-                    "type": "Positive",
-                    "scenario": scenario,
-                    "input": inp,
-                    "expected": exp
-                })
+                tests.append({"id": f"GET_PATH_POS_{test_counter['id']:02d}", "type": "Positive", "scenario": scenario, "input": inp, "expected": exp})
                 test_counter["id"] += 1
 
             # Boundary
-            boundary_cases = [
-                (f"Verify minimum {param} value", f"{param}=1", "200 OK"),
-                (f"Verify maximum {param} value", f"{param}=9223372036854775807", "200 OK / 400 if too large"),
-                (f"Verify leading zeros in {param}", f"{param}=00123", "200 OK (id=123)"),
-                (f"Verify very large {param} value", f"{param}=999999999999999", "200 OK / 400 Out of range")
-            ]
+            boundary_cases = [(f"Verify minimum {param} value", f"{param}=1", "200 OK"),
+                              (f"Verify maximum {param} value", f"{param}=9223372036854775807", "200 OK / 400 if too large"),
+                              (f"Verify leading zeros in {param}", f"{param}=00123", "200 OK (id=123)"),
+                              (f"Verify very large {param} value", f"{param}=999999999999999", "200 OK / 400 Out of range")]
             for scenario, inp, exp in boundary_cases:
-                tests.append({
-                    "id": f"GET_PATH_BND_{test_counter['id']:02d}",
-                    "type": "Boundary",
-                    "scenario": scenario,
-                    "input": inp,
-                    "expected": exp
-                })
+                tests.append({"id": f"GET_PATH_BND_{test_counter['id']:02d}", "type": "Boundary", "scenario": scenario, "input": inp, "expected": exp})
                 test_counter["id"] += 1
 
             # Negative
-            neg_cases = [
-                (f"Verify invalid {param} returns 400", f"{param}=invalid_id", "400 Bad Request"),
-                (f"Verify non-existing {param} returns 404", f"{param}=999999", "404 Not Found"),
-                (f"Verify special characters in {param} return 400", f"{param}=@#$%", "400 Bad Request"),
-                (f"Verify null/empty {param} handling", f"{param}=", "400 Bad Request / 404 Not Found"),
-                (f"Verify SQL injection in {param}", f"{param}=1' OR '1'='1", "400 Bad Request"),
-                (f"Verify script injection in {param}", f"{param}=<script>alert(1)</script>", "400 Bad Request")
-            ]
+            neg_cases = [(f"Verify invalid {param} returns 400", f"{param}=invalid_id", "400 Bad Request"),
+                         (f"Verify non-existing {param} returns 404", f"{param}=999999", "404 Not Found"),
+                         (f"Verify special characters in {param} return 400", f"{param}=@#$%", "400 Bad Request"),
+                         (f"Verify null/empty {param} handling", f"{param}=", "400 Bad Request / 404 Not Found"),
+                         (f"Verify SQL injection in {param}", f"{param}=1' OR '1'='1", "400 Bad Request"),
+                         (f"Verify script injection in {param}", f"{param}=<script>alert(1)</script>", "400 Bad Request")]
             for scenario, inp, exp in neg_cases:
-                tests.append({
-                    "id": f"GET_PATH_NEG_{test_counter['id']:02d}",
-                    "type": "Negative",
-                    "scenario": scenario,
-                    "input": inp,
-                    "expected": exp
-                })
+                tests.append({"id": f"GET_PATH_NEG_{test_counter['id']:02d}", "type": "Negative", "scenario": scenario, "input": inp, "expected": exp})
                 test_counter["id"] += 1
 
     def _add_get_query_params_tests(self, tests, test_counter, payload):
         flattened = flatten(payload)
         fields_list = list(flattened.keys())
-        
+
         # Functional
         tests.append({
             "id": f"GET_QUERY_FUN_{test_counter['id']:02d}",
@@ -791,7 +966,7 @@ class GenerateTestcases:
             "expected": "200 OK, filtered results"
         })
         test_counter['id'] += 1
-        
+
         if len(fields_list) > 1:
             tests.append({
                 "id": f"GET_QUERY_FUN_{test_counter['id']:02d}",
@@ -812,43 +987,27 @@ class GenerateTestcases:
         test_counter['id'] += 1
 
         # Pagination
-        pagination_cases = [
-            ("Verify page number works correctly", "page=2", "200 OK, returns second page"),
-            ("Verify page size limit is enforced", "size=1000", "200 OK, capped at max size (e.g. 100)"),
-            ("Verify page beyond max returns empty list", "page=999999", "200 OK, empty list []"),
-            ("Verify total count value is correct", "page=1&size=10", "Response contains totalCount field")
-        ]
+        pagination_cases = [("Verify page number works correctly", "page=2", "200 OK, returns second page"),
+                            ("Verify page size limit is enforced", "size=1000", "200 OK, capped at max size (e.g. 100)"),
+                            ("Verify page beyond max returns empty list", "page=999999", "200 OK, empty list []"),
+                            ("Verify total count value is correct", "page=1&size=10", "Response contains totalCount field")]
         for scenario, inp, exp in pagination_cases:
-            tests.append({
-                "id": f"GET_QUERY_PAG_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_QUERY_PAG_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # Sorting
-        sorting_cases = [
-            ("Verify ascending sort works", "sort=name,asc", "200 OK, sorted A-Z"),
-            ("Verify descending sort works", "sort=name,desc", "200 OK, sorted Z-A"),
-            ("Verify invalid sort field returns error or default", "sort=invalid_field", "400 Bad Request or 200 with default sort"),
-            ("Verify multi-field sorting", "sort=status,asc&sort=createdAt,desc", "200 OK, multi-level sort applied")
-        ]
+        sorting_cases = [("Verify ascending sort works", "sort=name,asc", "200 OK, sorted A-Z"),
+                         ("Verify descending sort works", "sort=name,desc", "200 OK, sorted Z-A"),
+                         ("Verify invalid sort field returns error or default", "sort=invalid_field", "400 Bad Request or 200 with default sort"),
+                         ("Verify multi-field sorting", "sort=status,asc&sort=createdAt,desc", "200 OK, multi-level sort applied")]
         for scenario, inp, exp in sorting_cases:
-            tests.append({
-                "id": f"GET_QUERY_SRT_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_QUERY_SRT_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # Filtering specific fields
         for field, value in flattened.items():
             field_type = detect_field_type(field, value)
-            
+
             # Basic Filtering
             tests.append({
                 "id": f"GET_QUERY_FLT_{test_counter['id']:02d}",
@@ -858,7 +1017,7 @@ class GenerateTestcases:
                 "expected": "200 OK, filtered results"
             })
             test_counter['id'] += 1
-            
+
             # Negative / Edge for query params
             tests.append({
                 "id": f"GET_QUERY_NEG_{test_counter['id']:02d}",
@@ -889,111 +1048,62 @@ class GenerateTestcases:
             test_counter['id'] += 1
 
     def _add_auth_access_tests(self, tests, test_counter):
-        auth_cases = [
-            ("Verify user can access own data", "Auth: User A, Resource: User A data", "200 OK"),
-            ("Verify user cannot access others' data", "Auth: User A, Resource: User B data", "403 Forbidden / 404 Not Found"),
-            ("Verify role-based access control", "Auth: Regular User, Resource: Admin only", "403 Forbidden / 404 Not Found"),
-            ("Verify expired token handling", "Auth: Expired JWT", "401 Unauthorized"),
-            ("Verify revoked token handling", "Auth: Revoked/Blacklisted token", "401 Unauthorized")
-        ]
+        auth_cases = [("Verify user can access own data", "Auth: User A, Resource: User A data", "200 OK"),
+                      ("Verify user cannot access others' data", "Auth: User A, Resource: User B data", "403 Forbidden / 404 Not Found"),
+                      ("Verify role-based access control", "Auth: Regular User, Resource: Admin only", "403 Forbidden / 404 Not Found"),
+                      ("Verify expired token handling", "Auth: Expired JWT", "401 Unauthorized"),
+                      ("Verify revoked token handling", "Auth: Revoked/Blacklisted token", "401 Unauthorized")]
         for scenario, inp, exp in auth_cases:
-            tests.append({
-                "id": f"GET_AUTH_{test_counter['id']:02d}",
-                "type": "Security",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_AUTH_{test_counter['id']:02d}", "type": "Security", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
     def _add_performance_reliability_tests(self, tests, test_counter):
-        perf_cases = [
-            (
-                "GET_PERF_RESPONSE_TIME",
-                "Verify response time under load",
-                "100 concurrent users",
-                "Average response time < 1s"
-            ),
-            (
-                "GET_PERF_CONCURRENT",
-                "Verify API supports concurrent requests",
-                "Multiple simultaneous GETs",
-                "No deadlocks, all requests succeed"
-            ),
-            (
-                "GET_PERF_RATE_LIMIT",
-                "Verify rate limiting behavior",
-                ">100 requests per minute",
-                "429 Too Many Requests"
-            ),
-            (
-                "GET_PERF_CACHING",
-                "Verify caching headers (ETag / Cache-Control)",
-                "Repeated request",
-                "200 OK with Cache-Control / 304 Not Modified"
-            ),
-            (
-                "GET_PERF_CONDITIONAL",
-                "Verify conditional GET (If-None-Match)",
-                "Request with If-None-Match ETag",
-                "304 Not Modified if content hasn't changed"
-            )
-        ]
-        for scenario_id, scenario, inp, exp in perf_cases:
-            tests.append({
-                "id": scenario_id,
-                "type": "Performance",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+        """
+        GET-specific performance extensions.
+
+        The general performance matrix is generated separately.
+        Only caching/conditional GET remain here because they are
+        GET-specific behaviors rather than general load scenarios.
+        """
+
+        tests.extend([{
+            "id": "GET_CACHE_01",
+            "type": "Performance",
+            "scenario": "Verify caching headers (ETag / Cache-Control)",
+            "input": "Repeated GET request",
+            "expected": ("200 OK with Cache-Control / "
+                         "ETag according to API contract")
+        }, {
+            "id": "GET_CACHE_02",
+            "type": "Performance",
+            "scenario": "Verify conditional GET (If-None-Match)",
+            "input": "Request with If-None-Match ETag",
+            "expected": "304 Not Modified if content has not changed"
+        }])
 
     def _add_error_handling_tests(self, tests, test_counter):
-        error_cases = [
-            ("Verify proper error message format", "Trigger 400 Bad Request", "JSON error with message, code, details"),
-            ("Verify error codes follow API standards", "Invalid ID / Missing Auth", "Consistent use of 400, 401, 403, 404"),
-            ("Verify stack traces are not exposed", "Trigger 500 Internal Error", "Generic error message, no stack trace"),
-            ("Verify correlation / request ID present", "Any request", "Response header contains X-Request-ID")
-        ]
+        error_cases = [("Verify proper error message format", "Trigger 400 Bad Request", "JSON error with message, code, details"),
+                       ("Verify error codes follow API standards", "Invalid ID / Missing Auth", "Consistent use of 400, 401, 403, 404"),
+                       ("Verify stack traces are not exposed", "Trigger 500 Internal Error", "Generic error message, no stack trace"),
+                       ("Verify correlation / request ID present", "Any request", "Response header contains X-Request-ID")]
         for scenario, inp, exp in error_cases:
-            tests.append({
-                "id": f"GET_ERR_{test_counter['id']:02d}",
-                "type": "Negative",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_ERR_{test_counter['id']:02d}", "type": "Negative", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
     def _add_compatibility_tests(self, tests, test_counter):
-        compat_cases = [
-            ("Verify backward compatibility", "Request with older API version header", "200 OK, returns data in old format"),
-            ("Verify versioning behavior", "GET /v2/users vs GET /v1/users", "New fields present only in v2"),
-            ("Verify behavior across environments", "QA/UAT/Prod config check", "Consistent behavior (endpoints, auth methods)")
-        ]
+        compat_cases = [("Verify backward compatibility", "Request with older API version header", "200 OK, returns data in old format"),
+                        ("Verify versioning behavior", "GET /v2/users vs GET /v1/users", "New fields present only in v2"),
+                        ("Verify behavior across environments", "QA/UAT/Prod config check", "Consistent behavior (endpoints, auth methods)")]
         for scenario, inp, exp in compat_cases:
-            tests.append({
-                "id": f"GET_COMPAT_{test_counter['id']:02d}",
-                "type": "Compatibility",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"GET_COMPAT_{test_counter['id']:02d}", "type": "Compatibility", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
-    
     def _generate_default_testcases(self, method, payload):
-        return [{
-            "id": f"{method}_01",
-            "type": "Positive",
-            "scenario": "Default test case",
-            "input": payload,
-            "expected": "Success response"
-        }]
-    
+        return [{"id": f"{method}_01", "type": "Positive", "scenario": "Default test case", "input": payload, "expected": "Success response"}]
+
     def _generate_query_param_testcases(self, endpoint, search_string, field_name="", method="GET", param_type="query"):
         tests = []
-        
+
         # Determine param_name based on parameter type and user input
         if param_type == 'path':
             param_name = ""
@@ -1004,38 +1114,46 @@ class GenerateTestcases:
                 param_name = self._extract_param_name(search_string)
             else:
                 param_name = ""
-            
+
         param_values = self._extract_param_values(search_string)
-        
+
         test_counter = {"id": 1}
         method_upper = method.upper()
         method_prefix = method_upper[:3]
         expected_response = "204 No Content" if method_upper == "DELETE" else "200 OK"
         action_verb = "Delete" if method_upper == "DELETE" else "Get"
-        
+
         # Path parameter specific design
         if param_type == 'path':
             base_endpoint = endpoint.rstrip('/')
             val = param_values[0] if param_values else (search_string if search_string else "123")
-            
+            path_param_names = re.findall(r"\{([^{}]+)\}", endpoint)
+            path_param_name = path_param_names[0] if path_param_names else ""
+
+            def build_path_input(value):
+                if path_param_name:
+                    return self._replace_path_parameter(endpoint, path_param_name, value)
+
+                return f"{endpoint.rstrip('/')}/{value}"
+
             # 1. Valid path param
             tests.append({
                 "id": f"{method_prefix}_POS_01",
                 "type": "Positive",
                 "scenario": f"{action_verb} with existing ID {val}",
-                "input": f"{base_endpoint}/{val}",
+                "input": build_path_input(val),
                 "expected": expected_response
             })
-            
+
             # 2. Non-existing ID
             tests.append({
                 "id": f"{method_prefix}_NEG_01",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} returns 404 for non-existing ID",
-                "input": f"{base_endpoint}/99999999",
+                "input": build_path_input("99999999"),
                 "expected": "404 Not Found"
             })
-            
+
             # 3. Invalid ID format
             tests.append({
                 "id": f"{method_prefix}_NEG_02",
@@ -1044,7 +1162,7 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/invalid_id_format",
                 "expected": "400 Bad Request"
             })
-            
+
             # 4. Negative ID
             tests.append({
                 "id": f"{method_prefix}_NEG_03",
@@ -1053,7 +1171,7 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/-1",
                 "expected": "400 Bad Request / 404 Not Found"
             })
-            
+
             # 5. Zero / null / blank ID
             tests.append({
                 "id": f"{method_prefix}_NEG_04",
@@ -1062,7 +1180,7 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/0",
                 "expected": "400 Bad Request / 404 Not Found"
             })
-            
+
             # 6. Very large numeric ID
             tests.append({
                 "id": f"{method_prefix}_NEG_05",
@@ -1071,7 +1189,7 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/9223372036854775807",
                 "expected": "400 Bad Request / 404 Not Found"
             })
-            
+
             # 7. Special characters in path param
             tests.append({
                 "id": f"{method_prefix}_NEG_06",
@@ -1080,7 +1198,7 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/ID_@#$%^&*",
                 "expected": "400 Bad Request"
             })
-            
+
             # 8. Security tests
             tests.append({
                 "id": f"{method_prefix}_SEC_01",
@@ -1103,39 +1221,39 @@ class GenerateTestcases:
                 "input": f"{base_endpoint}/../../etc/passwd",
                 "expected": "400 Bad Request / 404 Not Found"
             })
-            
+
             # 9. Auth tests
             tests.append({
                 "id": f"{method_prefix}_AUTH_01",
                 "type": "Security",
                 "scenario": "Verify 401 Unauthorized when accessing without valid token",
-                "input": f"{base_endpoint}/{val}",
+                "input": build_path_input(val),
                 "expected": "401 Unauthorized"
             })
             tests.append({
                 "id": f"{method_prefix}_AUTH_02",
                 "type": "Security",
                 "scenario": "Verify 403 Forbidden when accessing resource without permission",
-                "input": f"{base_endpoint}/{val}",
+                "input": build_path_input(val),
                 "expected": "403 Forbidden"
             })
-            
+
             # 10. Metadata tests
             tests.append({
                 "id": f"{method_prefix}_MET_01",
                 "type": "Performance",
                 "scenario": "Verify response time is within acceptable limits ( < 500ms )",
-                "input": f"{base_endpoint}/{val}",
+                "input": build_path_input(val),
                 "expected": "Response time < 500ms"
             })
             tests.append({
                 "id": f"{method_prefix}_MET_02",
                 "type": "Header",
                 "scenario": "Verify security headers are present in response (Content-Type, X-Content-Type-Options)",
-                "input": f"{base_endpoint}/{val}",
+                "input": build_path_input(val),
                 "expected": "Security headers present"
             })
-            
+
             return tests
 
         # 1. Functional - Positive Scenarios (Query Params logic starts here)
@@ -1145,12 +1263,12 @@ class GenerateTestcases:
                 if not param_name:
                     # Handle as path parameter: append search_string to endpoint
                     base_endpoint = endpoint.rstrip('/')
-                    inp = f"{base_endpoint}/{value}"
+                    inp = build_path_input(value)
                     scen = f"{action_verb} with ID {value}"
                 else:
                     inp = f"?{param_name}={value}"
                     scen = f"{action_verb} with {param_name}={value}"
-                    
+
                 tests.append({
                     "id": f"{method_prefix}_POS_{test_counter['id']:02d}",
                     "type": "Positive",
@@ -1159,14 +1277,14 @@ class GenerateTestcases:
                     "expected": expected_response
                 })
                 test_counter["id"] += 1
-            
+
             if len(param_values) > 1:
                 if not param_name:
                     base_endpoint = endpoint.rstrip('/')
                     inp = f"{base_endpoint}/{param_values[0]}"
                 else:
                     inp = f"?{param_name}={param_values[0]}&{param_name}={param_values[1]}"
-                    
+
                 tests.append({
                     "id": f"{method_prefix}_POS_{test_counter['id']:02d}",
                     "type": "Positive",
@@ -1184,7 +1302,7 @@ class GenerateTestcases:
             else:
                 inp = f"?{param_name if param_name else 'status'}=available"
                 scen = f"Valid {param_name if param_name else 'status'} parameter"
-                
+
             tests.append({
                 "id": f"{method_prefix}_POS_{test_counter['id']:02d}",
                 "type": "Positive",
@@ -1205,98 +1323,72 @@ class GenerateTestcases:
         test_counter["id"] += 1
 
         # 2. Pagination
-        pagination_cases = [
-            ("Verify page number works correctly", "page=2", "200 OK, returns second page"),
-            ("Verify page size limit is enforced", "size=1000", "200 OK, capped at max size"),
-            ("Verify page beyond max returns empty list", "page=999999", "200 OK, empty list []"),
-            ("Verify total count value is correct", "page=1&size=10", "Response contains total count")
-        ]
+        pagination_cases = [("Verify page number works correctly", "page=2", "200 OK, returns second page"),
+                            ("Verify page size limit is enforced", "size=1000", "200 OK, capped at max size"),
+                            ("Verify page beyond max returns empty list", "page=999999", "200 OK, empty list []"),
+                            ("Verify total count value is correct", "page=1&size=10", "Response contains total count")]
         for scenario, extra, exp in pagination_cases:
             val = param_values[0] if param_values else ('available' if not search_string else search_string)
             if not param_name:
                 base_endpoint = endpoint.rstrip('/')
-                inp = f"{base_endpoint}/{val}?{extra}"
+                inp = f"{build_path_input(val)}?{extra}"
             else:
                 inp = f"?{param_name}={val}&{extra}"
-            tests.append({
-                "id": f"{method_prefix}_PAG_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"{method_prefix}_PAG_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # 3. Sorting
-        sorting_cases = [
-            ("Verify ascending sort works", "sort=name,asc", "200 OK, sorted A-Z"),
-            ("Verify descending sort works", "sort=name,desc", "200 OK, sorted Z-A"),
-            ("Verify invalid sort field returns error or default", "sort=invalid_field", "400 Bad Request or default sort"),
-            ("Verify multi-field sorting", "sort=status,asc&sort=createdAt,desc", "200 OK")
-        ]
+        sorting_cases = [("Verify ascending sort works", "sort=name,asc", "200 OK, sorted A-Z"),
+                         ("Verify descending sort works", "sort=name,desc", "200 OK, sorted Z-A"),
+                         ("Verify invalid sort field returns error or default", "sort=invalid_field", "400 Bad Request or default sort"),
+                         ("Verify multi-field sorting", "sort=status,asc&sort=createdAt,desc", "200 OK")]
         for scenario, extra, exp in sorting_cases:
             val = param_values[0] if param_values else ('available' if not search_string else search_string)
             if not param_name:
                 base_endpoint = endpoint.rstrip('/')
-                inp = f"{base_endpoint}/{val}?{extra}"
+                inp = f"{build_path_input(val)}?{extra}"
             else:
                 inp = f"?{param_name}={val}&{extra}"
-            tests.append({
-                "id": f"{method_prefix}_SRT_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"{method_prefix}_SRT_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # 4. Filtering
         val_to_use = param_values[0] if param_values else ('available' if not search_string else search_string)
-        filtering_cases = [
-            ("Verify case sensitivity handling", f"{param_name if param_name else 'status'}={val_to_use.upper()}", "200 OK (if case-insensitive)"),
-            ("Verify partial match behavior", f"{param_name if param_name else 'status'}={val_to_use[:3] if len(val_to_use)>3 else 'ava'}", "200 OK (if partial match supported)")
-        ]
+        filtering_cases = [("Verify case sensitivity handling", f"{param_name if param_name else 'status'}={val_to_use.upper()}",
+                            "200 OK (if case-insensitive)"),
+                           ("Verify partial match behavior", f"{param_name if param_name else 'status'}={val_to_use[:3] if len(val_to_use)>3 else 'ava'}",
+                            "200 OK (if partial match supported)")]
         for scenario, inp_param, exp in filtering_cases:
             if not param_name:
                 base_endpoint = endpoint.rstrip('/')
                 inp = f"{base_endpoint}/{val_to_use}?{inp_param}"
             else:
                 inp = f"?{inp_param}"
-            tests.append({
-                "id": f"{method_prefix}_FLT_{test_counter['id']:02d}",
-                "type": "Functional",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"{method_prefix}_FLT_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # 5. Negative Scenarios
-        negative_cases = [
-            (f"Invalid {param_name if param_name else 'parameter'} value", f"{param_name if param_name else ''}=invalid_val_@#$%", "400 Bad Request"),
-            (f"Duplicate {param_name if param_name else 'parameter'} parameters handling", f"{param_name if param_name else ''}=val1&{param_name if param_name else ''}=val2", "200 OK (first/last used) or 400"),
-            (f"Extremely large query values in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}={'x' * 2000}", "400 Bad Request / 414 URL Too Long or Fallback to 200 OK"),
-            (f"Invalid query param name", "invalid_param=some_value", "200 OK (ignored) or 400")
-        ]
+        negative_cases = [(f"Invalid {param_name if param_name else 'parameter'} value", f"{param_name if param_name else ''}=invalid_val_@#$%",
+                           "400 Bad Request"),
+                          (f"Duplicate {param_name if param_name else 'parameter'} parameters handling",
+                           f"{param_name if param_name else ''}=val1&{param_name if param_name else ''}=val2", "200 OK (first/last used) or 400"),
+                          (f"Extremely large query values in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}={'x' * 2000}",
+                           "400 Bad Request / 414 URL Too Long or Fallback to 200 OK"),
+                          (f"Invalid query param name", "invalid_param=some_value", "200 OK (ignored) or 400")]
         for scenario, inp_param, exp in negative_cases:
             if not param_name and inp_param.startswith('='):
                 inp = f"?{inp_param[1:]}"
             else:
                 inp = f"?{inp_param}"
-                
-            tests.append({
-                "id": f"{method_prefix}_NEG_{test_counter['id']:02d}",
-                "type": "Negative",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+
+            tests.append({"id": f"{method_prefix}_NEG_{test_counter['id']:02d}", "type": "Negative", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # 6. Security
         security_cases = [
             (f"SQL injection in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=1' OR '1'='1", "400 Bad Request"),
-            (f"XSS injection in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=<script>alert(1)</script>", "400 Bad Request"),
+            (f"XSS injection in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=<script>alert(1)</script>",
+             "400 Bad Request"),
             (f"Path traversal in {param_name if param_name else 'parameter'}", f"{param_name if param_name else ''}=../../etc/passwd", "400 Bad Request"),
         ]
         for scenario, inp_param, exp in security_cases:
@@ -1304,81 +1396,50 @@ class GenerateTestcases:
                 inp = f"?{inp_param[1:]}"
             else:
                 inp = f"?{inp_param}"
-                
-            tests.append({
-                "id": f"{method_prefix}_SEC_{test_counter['id']:02d}",
-                "type": "Security",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+
+            tests.append({"id": f"{method_prefix}_SEC_{test_counter['id']:02d}", "type": "Security", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         # 7. Authorization & Access Control
-        auth_cases = [
-            ("Verify user can access own data", "Valid user token", "200 OK"),
-            ("Verify user cannot access others' data", "User A token accessing User B data", "403 Forbidden / 404 Not Found"),
-            ("Verify role-based access control", "Regular user accessing admin resource", "403 Forbidden / 404 Not Found"),
-            ("Verify expired token handling", "Expired JWT token", "401 Unauthorized"),
-            ("Verify revoked token handling", "Revoked/Blacklisted token", "401 Unauthorized")
-        ]
+        auth_cases = [("Verify user can access own data", "Valid user token", "200 OK"),
+                      ("Verify user cannot access others' data", "User A token accessing User B data", "403 Forbidden / 404 Not Found"),
+                      ("Verify role-based access control", "Regular user accessing admin resource", "403 Forbidden / 404 Not Found"),
+                      ("Verify expired token handling", "Expired JWT token", "401 Unauthorized"),
+                      ("Verify revoked token handling", "Revoked/Blacklisted token", "401 Unauthorized")]
         for scenario, inp, exp in auth_cases:
-            tests.append({
-                "id": f"{method_prefix}_AUTH_{test_counter['id']:02d}",
-                "type": "Security",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
-            test_counter["id"] += 1
-
-        # 8. Performance & Reliability
-        perf_cases = [
-            ("Verify response time under load", "100 concurrent requests", "Response time within SLA"),
-            ("Verify rate limiting behavior", "Exceeding requests per minute limit", "429 Too Many Requests"),
-            ("Verify caching headers (ETag / Cache-Control)", "Repeated GET request", "200 OK / 304 Not Modified")
-        ]
-        for scenario, inp, exp in perf_cases:
-            tests.append({
-                "id": f"{method_prefix}_PERF_{test_counter['id']:02d}",
-                "type": "Performance",
-                "scenario": scenario,
-                "input": inp,
-                "expected": exp
-            })
+            tests.append({"id": f"{method_prefix}_AUTH_{test_counter['id']:02d}", "type": "Security", "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
         return tests
 
-    
     def _extract_param_name(self, search_string):
         search_string = search_string.strip()
         if '=' in search_string:
             param_name = search_string.split('=')[0].strip('?').strip()
             return param_name if param_name else 'status'
         return 'status'
-    
+
     def _extract_param_values(self, search_string):
         search_string = search_string.strip()
-        
+
         if not search_string:
             return []
-        
+
         if '=' in search_string:
             values_part = search_string.split('=', 1)[1].strip()
         else:
             values_part = search_string
-        
+
         if not values_part:
             return []
-        
+
         values = [v.strip() for v in values_part.split(',') if v.strip()]
         return values
 
 
 def detect_field_type(field_name, value):
     field_lower = field_name.lower()
-    
+
     if value is None:
         return 'null'
     elif isinstance(value, bool):
@@ -1413,115 +1474,146 @@ def detect_field_type(field_name, value):
     else:
         return 'string'
 
+
 def generate_nested_array_tests(field_name, array_value, counter, method):
     tests = []
-    
+
     if not isinstance(array_value, list) or len(array_value) == 0:
         return tests
-    
+
     first_element = array_value[0]
-    
+
     if isinstance(first_element, dict):
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with object missing required fields - {field_name}",
-            "input": {field_name: [{}]},
+            "input": {
+                field_name: [{}]
+            },
             "expected": "400 Object in array missing required fields"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with object having extra fields - {field_name}",
-            "input": {field_name: [{**first_element, "extra_field": "unexpected"}]},
+            "input": {
+                field_name: [{
+                    **first_element, "extra_field": "unexpected"
+                }]
+            },
             "expected": "200 Success or 400 Unknown field in array object"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with invalid nested field types - {field_name}",
-            "input": {field_name: [{**{k: None for k in first_element.keys()}}]},
+            "input": {
+                field_name: [{
+                    **{
+                        k: None
+                        for k in first_element.keys()
+                    }
+                }]
+            },
             "expected": "400 Invalid field type in nested array object"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with duplicate objects - {field_name}",
-            "input": {field_name: [first_element, first_element]},
+            "input": {
+                field_name: [first_element, first_element]
+            },
             "expected": "200 Success or 400 Duplicate objects not allowed"
         })
         counter['id'] += 1
-        
+
         for key, val in first_element.items():
             if isinstance(val, str) and '@' in val:
                 tests.append({
                     "id": f"{method}_NESTED_{counter['id']:03d}",
                     "type": "Validation",
                     "scenario": f"Array of objects with invalid email in nested field {key} - {field_name}",
-                    "input": {field_name: [{**first_element, key: "invalid-email"}]},
+                    "input": {
+                        field_name: [{
+                            **first_element, key: "invalid-email"
+                        }]
+                    },
                     "expected": "400 Invalid email in nested array object field"
                 })
                 counter['id'] += 1
-                
+
     elif isinstance(first_element, list):
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array of arrays - {field_name}",
-            "input": {field_name: [[1, 2], [3, 4]]},
+            "input": {
+                field_name: [[1, 2], [3, 4]]
+            },
             "expected": "200 Success or 400 Nested arrays not allowed"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array of arrays with null - {field_name}",
-            "input": {field_name: [[1, None]]},
+            "input": {
+                field_name: [[1, None]]
+            },
             "expected": "400 Null values in nested array"
         })
         counter['id'] += 1
-        
+
     else:
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with duplicate values - {field_name}",
-            "input": {field_name: [first_element, first_element]},
+            "input": {
+                field_name: [first_element, first_element]
+            },
             "expected": "200 Success or 400 Duplicate values not allowed"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_NESTED_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Array with mixed types - {field_name}",
-            "input": {field_name: [first_element, "string", 123, True]},
+            "input": {
+                field_name: [first_element, "string", 123, True]
+            },
             "expected": "400 Mixed types in array not allowed"
         })
         counter['id'] += 1
-        
+
         if isinstance(first_element, int):
             tests.append({
                 "id": f"{method}_NESTED_{counter['id']:03d}",
                 "type": "Validation",
                 "scenario": f"Array of integers with string value - {field_name}",
-                "input": {field_name: [first_element, "not_a_number"]},
+                "input": {
+                    field_name: [first_element, "not_a_number"]
+                },
                 "expected": "400 Invalid type in numeric array"
             })
             counter['id'] += 1
-    
+
     return tests
+
 
 def generate_field_specific_tests(field_name, field_type, value, counter, method, required=False):
     tests = []
-    
+
     field_id = field_name.replace('.', '_')
 
     # Add missing field test if it's required
@@ -1535,13 +1627,15 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "expected": f"400 Bad Request - {field_name} is required"
         })
         counter['id'] += 1
-    
+
     if field_type == 'email':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid email format for {field_name}",
-            "input": {field_name: "invalid-email"},
+            "input": {
+                field_name: "invalid-email"
+            },
             "expected": "400 Invalid email format"
         })
         counter['id'] += 1
@@ -1549,7 +1643,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Missing @ symbol in email {field_name}",
-            "input": {field_name: "invalidemail.com"},
+            "input": {
+                field_name: "invalidemail.com"
+            },
             "expected": "400 Invalid email format"
         })
         counter['id'] += 1
@@ -1557,17 +1653,21 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Missing domain in email {field_name}",
-            "input": {field_name: "test@"},
+            "input": {
+                field_name: "test@"
+            },
             "expected": "400 Invalid email format"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'phone':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid phone format for {field_name}",
-            "input": {field_name: "123"},
+            "input": {
+                field_name: "123"
+            },
             "expected": "400 Invalid phone format"
         })
         counter['id'] += 1
@@ -1575,17 +1675,21 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Phone with invalid characters {field_name}",
-            "input": {field_name: "123-ABC-DEFG"},
+            "input": {
+                field_name: "123-ABC-DEFG"
+            },
             "expected": "400 Invalid phone format"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'date':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid date format for {field_name}",
-            "input": {field_name: "2024/12/08"},
+            "input": {
+                field_name: "2024/12/08"
+            },
             "expected": "400 Invalid date format (YYYY-MM-DD)"
         })
         counter['id'] += 1
@@ -1593,7 +1697,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Future date for {field_name}",
-            "input": {field_name: "2099-12-31"},
+            "input": {
+                field_name: "2099-12-31"
+            },
             "expected": "400 Invalid date - future date not allowed"
         })
         counter['id'] += 1
@@ -1601,17 +1707,21 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid day in date for {field_name}",
-            "input": {field_name: "2024-02-30"},
+            "input": {
+                field_name: "2024-02-30"
+            },
             "expected": "400 Invalid date - day out of range"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'integer':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Positive",
             "scenario": f"Valid integer for {field_name}",
-            "input": {field_name: 100},
+            "input": {
+                field_name: 100
+            },
             "expected": "200 OK / 201 Created"
         })
         counter['id'] += 1
@@ -1619,7 +1729,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Zero value for {field_name}",
-            "input": {field_name: 0},
+            "input": {
+                field_name: 0
+            },
             "expected": "400 Invalid value or 200 OK" if required else "200 OK"
         })
         counter['id'] += 1
@@ -1627,7 +1739,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Negative value for {field_name}",
-            "input": {field_name: -1},
+            "input": {
+                field_name: -1
+            },
             "expected": "200 OK / 400 Invalid"
         })
         counter['id'] += 1
@@ -1635,7 +1749,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Boundary: Max integer for {field_name}",
-            "input": {field_name: 2147483647},
+            "input": {
+                field_name: 2147483647
+            },
             "expected": "200 Success or 400 Overflow"
         })
         counter['id'] += 1
@@ -1643,7 +1759,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Float value for integer field {field_name}",
-            "input": {field_name: 123.45},
+            "input": {
+                field_name: 123.45
+            },
             "expected": "400 Invalid data type - integer expected"
         })
         counter['id'] += 1
@@ -1651,27 +1769,33 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Very large number for {field_name}",
-            "input": {field_name: 999999999999999999},
+            "input": {
+                field_name: 999999999999999999
+            },
             "expected": "400 Value out of range"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'number':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"String value for number field {field_name}",
-            "input": {field_name: "not a number"},
+            "input": {
+                field_name: "not a number"
+            },
             "expected": "400 Invalid data type - number expected"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'string':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Positive",
             "scenario": f"Valid string for {field_name}",
-            "input": {field_name: "valid_string_value"},
+            "input": {
+                field_name: "valid_string_value"
+            },
             "expected": "200 OK / 201 Created"
         })
         counter['id'] += 1
@@ -1679,7 +1803,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Empty string for {field_name}",
-            "input": {field_name: ""},
+            "input": {
+                field_name: ""
+            },
             "expected": "400 Invalid value or 200 OK" if required else "200 OK"
         })
         counter['id'] += 1
@@ -1687,7 +1813,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Whitespace only for {field_name}",
-            "input": {field_name: "   "},
+            "input": {
+                field_name: "   "
+            },
             "expected": "400 Invalid value - whitespace only" if required else "200 OK"
         })
         counter['id'] += 1
@@ -1695,7 +1823,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Positive",
             "scenario": f"Numeric string for {field_name}",
-            "input": {field_name: "12345"},
+            "input": {
+                field_name: "12345"
+            },
             "expected": "200 OK"
         })
         counter['id'] += 1
@@ -1703,7 +1833,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Positive",
             "scenario": f"String with special characters for {field_name}",
-            "input": {field_name: "test!@#$%^&*()_+"},
+            "input": {
+                field_name: "test!@#$%^&*()_+"
+            },
             "expected": "200 OK"
         })
         counter['id'] += 1
@@ -1711,7 +1843,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Very long string for {field_name}",
-            "input": {field_name: "s" * 5000},
+            "input": {
+                field_name: "s" * 5000
+            },
             "expected": "400 String too long / 200 If accepted"
         })
         counter['id'] += 1
@@ -1720,27 +1854,33 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Minimum length boundary for {field_name}",
-            "input": {field_name: "a"},
+            "input": {
+                field_name: "a"
+            },
             "expected": f"400 Too short (min: {min_length})" if required else "200 OK"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'uuid':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid UUID format for {field_name}",
-            "input": {field_name: "invalid-uuid-format"},
+            "input": {
+                field_name: "invalid-uuid-format"
+            },
             "expected": "400 Invalid UUID format"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'url':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"Invalid URL format for {field_name}",
-            "input": {field_name: "not a valid url"},
+            "input": {
+                field_name: "not a valid url"
+            },
             "expected": "400 Invalid URL format"
         })
         counter['id'] += 1
@@ -1748,17 +1888,21 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation",
             "scenario": f"URL with invalid protocol for {field_name}",
-            "input": {field_name: "ftp://invalid.com"},
+            "input": {
+                field_name: "ftp://invalid.com"
+            },
             "expected": "400 Invalid URL - only HTTP/HTTPS allowed"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'password':
         tests.append({
             "id": f"{method}_SEC_{counter['id']:03d}",
             "type": "Security",
             "scenario": f"Weak password for {field_name}",
-            "input": {field_name: "123"},
+            "input": {
+                field_name: "123"
+            },
             "expected": "400 Password too weak (min 8 chars, numbers, letters)"
         })
         counter['id'] += 1
@@ -1766,17 +1910,21 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_SEC_{counter['id']:03d}",
             "type": "Security",
             "scenario": f"Password without special chars {field_name}",
-            "input": {field_name: "validpass123"},
+            "input": {
+                field_name: "validpass123"
+            },
             "expected": "400 Password must contain special characters"
         })
         counter['id'] += 1
-        
+
     elif field_type == 'array':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Positive",
             "scenario": f"Multiple items in array for {field_name}",
-            "input": {field_name: [value[0] if isinstance(value, list) and value else "item1", "item2"]},
+            "input": {
+                field_name: [value[0] if isinstance(value, list) and value else "item1", "item2"]
+            },
             "expected": "200 OK"
         })
         counter['id'] += 1
@@ -1784,7 +1932,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Empty array for {field_name}",
-            "input": {field_name: []},
+            "input": {
+                field_name: []
+            },
             "expected": "400 Empty array not allowed" if required else "200 Success"
         })
         counter['id'] += 1
@@ -1792,38 +1942,46 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Null element in array {field_name}",
-            "input": {field_name: [None]},
+            "input": {
+                field_name: [None]
+            },
             "expected": "400 Array contains null elements" if required else "200 Success / 400 Invalid"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Non-array value for {field_name}",
-            "input": {field_name: "not an array"},
+            "input": {
+                field_name: "not an array"
+            },
             "expected": "400 Invalid data type - array expected"
         })
         counter['id'] += 1
-        
+
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Array exceeds max length for {field_name}",
-            "input": {field_name: list(range(1000))},
+            "input": {
+                field_name: list(range(1000))
+            },
             "expected": "400 Array size exceeds maximum limit"
         })
         counter['id'] += 1
-        
+
         nested_tests = generate_nested_array_tests(field_name, value, counter, method)
         tests.extend(nested_tests)
-        
+
     elif field_type == 'boolean':
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Non-boolean value for {field_name}",
-            "input": {field_name: "not-a-boolean"},
+            "input": {
+                field_name: "not-a-boolean"
+            },
             "expected": "400 Invalid data type - boolean expected"
         })
         counter['id'] += 1
@@ -1833,7 +1991,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Negative",
             "scenario": f"Non-object value for {field_name}",
-            "input": {field_name: "not-an-object"},
+            "input": {
+                field_name: "not-an-object"
+            },
             "expected": "400 Invalid data type - object expected"
         })
         counter['id'] += 1
@@ -1842,12 +2002,15 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
             "scenario": f"Empty object for {field_name}",
-            "input": {field_name: {}},
+            "input": {
+                field_name: {}
+            },
             "expected": "400 Missing required sub-fields" if required else "200 Success / 400 Missing required"
         })
         counter['id'] += 1
-        
+
     return tests
+
 
 def flatten(data, parent_key="", sep="."):
     """
@@ -1870,6 +2033,7 @@ def flatten(data, parent_key="", sep="."):
                 items[new_key] = v
     return items
 
+
 def remove_field(data, field_path):
     new_data = json.loads(json.dumps(data))
     keys = field_path.split(".")
@@ -1890,6 +2054,7 @@ def remove_field(data, field_path):
             pass
     return new_data
 
+
 def set_field(data, field_path, value):
     new_data = json.loads(json.dumps(data))
     keys = field_path.split(".")
@@ -1909,6 +2074,7 @@ def set_field(data, field_path, value):
         except:
             pass
     return new_data
+
 
 # Backward-compatible alias for PEP 8 rename
 generate_testcases = GenerateTestcases
