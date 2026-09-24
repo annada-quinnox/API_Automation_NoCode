@@ -53,7 +53,14 @@ class GenerateTestcases:
         print(f"Base URL received for generation: {base_url}")
 
         if search_string and method.upper() in ['GET', 'DELETE']:
-            self.test_cases = self._generate_query_param_testcases(endpoint, search_string, field_name, method, param_type)
+            self.test_cases = self._generate_query_param_testcases(
+                endpoint,
+                search_string,
+                field_name,
+                method,
+                param_type,
+                path_parameter_values
+            )
         else:
             self.test_cases = self._generate_testcases_internal(method, endpoint, payload_json, field_configs, path_parameter_values)
             # -------------------------------------------------------------
@@ -120,7 +127,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_BASELINE_01",
                 "type": "Performance",
-                "scenario": f"PERF-01 - Baseline performance for {method}",
+                "scenario": f"Baseline performance for {method}",
                 "input": ("Users: 5; "
                           "Ramp-up: 1 user/sec; "
                           "Duration: 5 minutes"),
@@ -133,7 +140,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_EXPECTED_LOAD_02",
                 "type": "Performance",
-                "scenario": f"PERF-02 - Expected Load for {method}",
+                "scenario": f"Expected Load for {method}",
                 "input": ("Users: 25; "
                           "Ramp-up: 5 users/sec; "
                           "Duration: 15 minutes"),
@@ -148,7 +155,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_PEAK_03",
                 "type": "Performance",
-                "scenario": f"PERF-03 - Peak Load for {method}",
+                "scenario": f"Peak Load for {method}",
                 "input": ("Users: 50; "
                           "Ramp-up: 10 users/sec; "
                           "Duration: 15 minutes"),
@@ -163,7 +170,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_STRESS_04",
                 "type": "Performance",
-                "scenario": f"PERF-04 - Stress / Breaking Point for {method}",
+                "scenario": f"Stress / Breaking Point for {method}",
                 "input": ("Progressive load: "
                           "25 -> 50 -> 100 -> 150 -> "
                           "200 -> 250 -> 300 users; "
@@ -179,7 +186,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_SPIKE_05",
                 "type": "Performance",
-                "scenario": f"PERF-05 - Spike Test for {method}",
+                "scenario": f"Spike Test for {method}",
                 "input": ("Sudden traffic spike: "
                           "10 -> 200 users; "
                           "then drop back: 200 -> 10 users; "
@@ -195,7 +202,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_SOAK_06",
                 "type": "Performance",
-                "scenario": f"PERF-06 - Soak / Endurance for {method}",
+                "scenario": f"Soak / Endurance for {method}",
                 "input": ("Users: 50; "
                           "Duration: 1-4 hours"),
                 "expected": ("Monitor response-time trend, memory, CPU, "
@@ -210,7 +217,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_VOLUME_07",
                 "type": "Performance",
-                "scenario": f"PERF-07 - Volume / Data Scalability for {method}",
+                "scenario": f"Volume / Data Scalability for {method}",
                 "input": volume_input,
                 "expected": ("Validate performance with large payload/data; "
                              "monitor latency, throughput and error rate")
@@ -222,7 +229,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_RATE_LIMIT_08",
                 "type": "Performance",
-                "scenario": (f"PERF-08 - Rate-Limit Validation for {method} "
+                "scenario": (f"Rate-Limit Validation for {method} "
                              "(if throttling is configured)"),
                 "input": ("Test increasing request rate: "
                           "80, 90, 100, 110, 150 and 200 RPM; "
@@ -237,7 +244,7 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_RECOVERY_09",
                 "type": "Performance",
-                "scenario": f"PERF-09 - Recovery Test for {method}",
+                "scenario": f"Recovery Test for {method}",
                 "input": ("Overload -> normal load; "
                           "Duration: 10 minutes"),
                 "expected": ("Verify response time, throughput and error rate "
@@ -250,11 +257,46 @@ class GenerateTestcases:
             {
                 "id": f"{method}_PERF_CONCURRENCY_10",
                 "type": "Performance",
-                "scenario": f"PERF-10 - Concurrency Test for {method}",
+                "scenario": f"Concurrency Test for {method}",
                 "input": concurrency_input,
-                "expected": ("Handle high simultaneous requests without "
-                             "race-condition symptoms, deadlocks or unexpected failures")
-            }
+                "expected": (
+                    "Handle high simultaneous requests without "
+                    "race-condition symptoms, deadlocks or unexpected failures"
+                )
+            },
+
+            # ---------------------------------------------------------
+            # PERF-11 - Caching Headers
+            # ---------------------------------------------------------
+            *(
+                [{
+                    "id": f"{method}_PERF_CACHE_HEADERS_11",
+                    "type": "Performance",
+                    "scenario": "Verify caching headers (ETag / Cache-Control)",
+                    "input": "Repeated GET request",
+                    "expected": (
+                        "200 OK with Cache-Control / "
+                        "ETag according to API contract"
+                    )
+                }]
+                if method == "GET"
+                else []
+            ),
+
+            # ---------------------------------------------------------
+            # PERF-12 - Conditional GET
+            # ---------------------------------------------------------
+            *(
+                [{
+                    "id": f"{method}_PERF_CONDITIONAL_GET_12",
+                    "type": "Performance",
+                    "scenario": "Verify conditional GET (If-None-Match)",
+                    "input": "Request with If-None-Match ETag",
+                    "expected": "304 Not Modified if content has not changed"
+                }]
+                if method == "GET"
+                else []
+            )
         ]
 
     def _generate_testcases_internal(self, method, endpoint, payload_json, field_configs={}, path_parameter_values=None):
@@ -861,7 +903,7 @@ class GenerateTestcases:
         self._add_auth_access_tests(tests, test_counter)
 
         # 6. Performance & Reliability
-        self._add_performance_reliability_tests(tests, test_counter)
+        #self._add_performance_reliability_tests(tests, test_counter)
 
         # 7. Error Handling
         self._add_error_handling_tests(tests, test_counter)
@@ -918,39 +960,178 @@ class GenerateTestcases:
             tests.append({"id": f"GET_NOPARAM_{test_counter['id']:02d}", "type": t_type, "scenario": scenario, "input": inp, "expected": exp})
             test_counter["id"] += 1
 
-    def _add_get_path_params_tests(self, tests, test_counter, endpoint, path_params, path_parameter_values=None):
+    def _add_get_path_params_tests(
+        self,
+        tests,
+        test_counter,
+        endpoint,
+        path_params,
+        path_parameter_values=None
+    ):
         path_parameter_values = path_parameter_values or {}
+
         for param in path_params:
-            configured_value = path_parameter_values.get(param, "123")
-            # Positive
+
+            # ---------------------------------------------------------
+            # Resolve the complete endpoint.
+            #
+            # The parameter currently under test gets the supplied
+            # hardcoded value.
+            #
+            # Every other {parameter} in the endpoint gets its
+            # configured value. If no configured value exists, use 123.
+            #
+            # This guarantees that NO {placeholder} remains in the URL.
+            # ---------------------------------------------------------
+            def build_path_input(value):
+                resolved_endpoint = endpoint
+
+                replacement_values = dict(path_parameter_values)
+
+                # Override the parameter currently being tested
+                replacement_values[param] = value
+
+                # Replace every {...} placeholder in the endpoint
+                for parameter_name in path_params:
+
+                    replacement_value = replacement_values.get(
+                        parameter_name,
+                        "123"
+                    )
+
+                    placeholder = "{" + str(parameter_name) + "}"
+
+                    resolved_endpoint = resolved_endpoint.replace(
+                        placeholder,
+                        str(replacement_value)
+                    )
+
+                return resolved_endpoint
+
+            configured_value = path_parameter_values.get(
+                param,
+                "123"
+            )
+
+            # ---------------------------------------------------------
+            # Positive tests
+            # ---------------------------------------------------------
             pos_cases = [
-                (f"Verify valid {param} returns correct record", f"{param}=123", "200 OK, correct resource"),
-                (f"Verify numeric ID works correctly for {param}", f"{param}=456", "200 OK"),
-                (f"Verify alphanumeric ID works for {param} (if allowed)", f"{param}=ABC-789", "200 OK"),
-                (f"Verify response contains correct resource ID for {param}", f"{param}=123", f"Response contains {param}=123")
+                (
+                    f"Verify valid {param} returns correct record",
+                    build_path_input(configured_value),
+                    "200 OK, correct resource"
+                ),
+                (
+                    f"Verify numeric ID works correctly for {param}",
+                    build_path_input("456"),
+                    "200 OK"
+                ),
+                (
+                    f"Verify alphanumeric ID works for {param} (if allowed)",
+                    build_path_input("ABC-789"),
+                    "200 OK"
+                ),
+                (
+                    f"Verify response contains correct resource ID for {param}",
+                    build_path_input("123"),
+                    f"Response contains {param}=123"
+                )
             ]
+
             for scenario, inp, exp in pos_cases:
-                tests.append({"id": f"GET_PATH_POS_{test_counter['id']:02d}", "type": "Positive", "scenario": scenario, "input": inp, "expected": exp})
+                tests.append({
+                    "id": f"GET_PATH_POS_{test_counter['id']:02d}",
+                    "type": "Positive",
+                    "scenario": scenario,
+                    "input": inp,
+                    "expected": exp
+                })
+
                 test_counter["id"] += 1
 
-            # Boundary
-            boundary_cases = [(f"Verify minimum {param} value", f"{param}=1", "200 OK"),
-                              (f"Verify maximum {param} value", f"{param}=9223372036854775807", "200 OK / 400 if too large"),
-                              (f"Verify leading zeros in {param}", f"{param}=00123", "200 OK (id=123)"),
-                              (f"Verify very large {param} value", f"{param}=999999999999999", "200 OK / 400 Out of range")]
+            # ---------------------------------------------------------
+            # Boundary tests
+            # ---------------------------------------------------------
+            boundary_cases = [
+                (
+                    f"Verify minimum {param} value",
+                    build_path_input("1"),
+                    "200 OK"
+                ),
+                (
+                    f"Verify maximum {param} value",
+                    build_path_input("9223372036854775807"),
+                    "200 OK / 400 if too large"
+                ),
+                (
+                    f"Verify leading zeros in {param}",
+                    build_path_input("00123"),
+                    "200 OK (id=123)"
+                ),
+                (
+                    f"Verify very large {param} value",
+                    build_path_input("999999999999999"),
+                    "200 OK / 400 Out of range"
+                )
+            ]
+
             for scenario, inp, exp in boundary_cases:
-                tests.append({"id": f"GET_PATH_BND_{test_counter['id']:02d}", "type": "Boundary", "scenario": scenario, "input": inp, "expected": exp})
+                tests.append({
+                    "id": f"GET_PATH_BND_{test_counter['id']:02d}",
+                    "type": "Boundary",
+                    "scenario": scenario,
+                    "input": inp,
+                    "expected": exp
+                })
+
                 test_counter["id"] += 1
 
-            # Negative
-            neg_cases = [(f"Verify invalid {param} returns 400", f"{param}=invalid_id", "400 Bad Request"),
-                         (f"Verify non-existing {param} returns 404", f"{param}=999999", "404 Not Found"),
-                         (f"Verify special characters in {param} return 400", f"{param}=@#$%", "400 Bad Request"),
-                         (f"Verify null/empty {param} handling", f"{param}=", "400 Bad Request / 404 Not Found"),
-                         (f"Verify SQL injection in {param}", f"{param}=1' OR '1'='1", "400 Bad Request"),
-                         (f"Verify script injection in {param}", f"{param}=<script>alert(1)</script>", "400 Bad Request")]
+            # ---------------------------------------------------------
+            # Negative tests
+            # ---------------------------------------------------------
+            neg_cases = [
+                (
+                    f"Verify invalid {param} returns 400",
+                    build_path_input("invalid_id"),
+                    "400 Bad Request"
+                ),
+                (
+                    f"Verify non-existing {param} returns 404",
+                    build_path_input("999999"),
+                    "404 Not Found"
+                ),
+                (
+                    f"Verify special characters in {param} return 400",
+                    build_path_input("@#$%"),
+                    "400 Bad Request"
+                ),
+                (
+                    f"Verify null/empty {param} handling",
+                    build_path_input(""),
+                    "400 Bad Request / 404 Not Found"
+                ),
+                (
+                    f"Verify SQL injection in {param}",
+                    build_path_input("1' OR '1'='1"),
+                    "400 Bad Request"
+                ),
+                (
+                    f"Verify script injection in {param}",
+                    build_path_input("<script>alert(1)</script>"),
+                    "400 Bad Request"
+                )
+            ]
+
             for scenario, inp, exp in neg_cases:
-                tests.append({"id": f"GET_PATH_NEG_{test_counter['id']:02d}", "type": "Negative", "scenario": scenario, "input": inp, "expected": exp})
+                tests.append({
+                    "id": f"GET_PATH_NEG_{test_counter['id']:02d}",
+                    "type": "Negative",
+                    "scenario": scenario,
+                    "input": inp,
+                    "expected": exp
+                })
+
                 test_counter["id"] += 1
 
     def _add_get_query_params_tests(self, tests, test_counter, payload):
@@ -1101,8 +1282,9 @@ class GenerateTestcases:
     def _generate_default_testcases(self, method, payload):
         return [{"id": f"{method}_01", "type": "Positive", "scenario": "Default test case", "input": payload, "expected": "Success response"}]
 
-    def _generate_query_param_testcases(self, endpoint, search_string, field_name="", method="GET", param_type="query"):
+    def _generate_query_param_testcases(self, endpoint, search_string, field_name="", method="GET", param_type="query", path_parameter_values=None):
         tests = []
+        path_parameter_values = path_parameter_values or {}
 
         # Determine param_name based on parameter type and user input
         if param_type == 'path':
@@ -1116,6 +1298,15 @@ class GenerateTestcases:
                 param_name = ""
 
         param_values = self._extract_param_values(search_string)
+        val = (
+            param_values[0]
+            if param_values
+            else (
+                search_string
+                if search_string
+                else "123"
+            )
+        )
 
         test_counter = {"id": 1}
         method_upper = method.upper()
@@ -1126,15 +1317,39 @@ class GenerateTestcases:
         # Path parameter specific design
         if param_type == 'path':
             base_endpoint = endpoint.rstrip('/')
-            val = param_values[0] if param_values else (search_string if search_string else "123")
             path_param_names = re.findall(r"\{([^{}]+)\}", endpoint)
             path_param_name = path_param_names[0] if path_param_names else ""
 
-            def build_path_input(value):
-                if path_param_name:
-                    return self._replace_path_parameter(endpoint, path_param_name, value)
+            def build_path_input(value, override_parameter=None):
+                resolved_endpoint = endpoint
 
-                return f"{endpoint.rstrip('/')}/{value}"
+                configured_values = {}
+
+    # Use the configured path parameter values when available
+                if isinstance(path_parameter_values, dict):
+                    configured_values.update(path_parameter_values)
+
+            # The value currently being tested overrides that parameter
+                if override_parameter:
+                    configured_values[override_parameter] = value
+                elif path_param_name:
+                    configured_values[path_param_name] = value
+
+        # Replace EVERY {...} placeholder
+                def replace_match(match):
+                    parameter_name = match.group(1).strip()
+
+                    if parameter_name in configured_values:
+                        return str(configured_values[parameter_name])
+
+            # No configured value -> use the current test value
+                    return str(value)
+
+                return re.sub(
+                    r"\{([^{}]+)\}",
+                    replace_match,
+                    resolved_endpoint
+                )
 
             # 1. Valid path param
             tests.append({
@@ -1159,7 +1374,7 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_NEG_02",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} with invalid format ID (string instead of numeric)",
-                "input": f"{base_endpoint}/invalid_id_format",
+                "input": build_path_input("invalid_id_format"),
                 "expected": "400 Bad Request"
             })
 
@@ -1168,7 +1383,7 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_NEG_03",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} with negative ID",
-                "input": f"{base_endpoint}/-1",
+                "input": build_path_input("-1"),
                 "expected": "400 Bad Request / 404 Not Found"
             })
 
@@ -1177,7 +1392,7 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_NEG_04",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} with zero ID",
-                "input": f"{base_endpoint}/0",
+                "input": build_path_input("0"),
                 "expected": "400 Bad Request / 404 Not Found"
             })
 
@@ -1186,7 +1401,7 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_NEG_05",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} with very large numeric ID (overflow)",
-                "input": f"{base_endpoint}/9223372036854775807",
+                "input": build_path_input("9223372036854775807"),
                 "expected": "400 Bad Request / 404 Not Found"
             })
 
@@ -1195,7 +1410,7 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_NEG_06",
                 "type": "Negative",
                 "scenario": f"Verify {action_verb} with special characters in path",
-                "input": f"{base_endpoint}/ID_@#$%^&*",
+                "input": build_path_input("ID_@#$%^&*"),
                 "expected": "400 Bad Request"
             })
 
@@ -1204,21 +1419,21 @@ class GenerateTestcases:
                 "id": f"{method_prefix}_SEC_01",
                 "type": "Security",
                 "scenario": "Verify path parameter is protected against SQL Injection",
-                "input": f"{base_endpoint}/{val}' OR '1'='1",
+                "input": build_path_input(f"{val}' OR '1'='1"),
                 "expected": "400 Bad Request"
             })
             tests.append({
                 "id": f"{method_prefix}_SEC_02",
                 "type": "Security",
                 "scenario": "Verify path parameter is protected against XSS",
-                "input": f"{base_endpoint}/<script>alert(1)</script>",
+                "input": build_path_input("<script>alert(1)</script>"),
                 "expected": "400 Bad Request"
             })
             tests.append({
                 "id": f"{method_prefix}_SEC_03",
                 "type": "Security",
                 "scenario": "Verify path parameter is protected against Path Traversal",
-                "input": f"{base_endpoint}/../../etc/passwd",
+                "input": build_path_input("../../etc/passwd"),
                 "expected": "400 Bad Request / 404 Not Found"
             })
 
@@ -1281,7 +1496,7 @@ class GenerateTestcases:
             if len(param_values) > 1:
                 if not param_name:
                     base_endpoint = endpoint.rstrip('/')
-                    inp = f"{base_endpoint}/{param_values[0]}"
+                    inp = build_path_input(param_values[0])
                 else:
                     inp = f"?{param_name}={param_values[0]}&{param_name}={param_values[1]}"
 
@@ -1297,7 +1512,7 @@ class GenerateTestcases:
             # If no param_values but we have search_string (and blank field_name)
             if not param_name and search_string:
                 base_endpoint = endpoint.rstrip('/')
-                inp = f"{base_endpoint}/{search_string}"
+                inp = build_path_input(search_string)
                 scen = f"Valid path parameter {search_string}"
             else:
                 inp = f"?{param_name if param_name else 'status'}=available"
@@ -1361,7 +1576,7 @@ class GenerateTestcases:
         for scenario, inp_param, exp in filtering_cases:
             if not param_name:
                 base_endpoint = endpoint.rstrip('/')
-                inp = f"{base_endpoint}/{val_to_use}?{inp_param}"
+                inp = f"{build_path_input(val_to_use)}?{inp_param}"
             else:
                 inp = f"?{inp_param}"
             tests.append({"id": f"{method_prefix}_FLT_{test_counter['id']:02d}", "type": "Functional", "scenario": scenario, "input": inp, "expected": exp})
@@ -1772,7 +1987,7 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "input": {
                 field_name: 999999999999999999
             },
-            "expected": "400 Value out of range"
+            "expected": "400 (Value out of range)"
         })
         counter['id'] += 1
 
@@ -1849,7 +2064,9 @@ def generate_field_specific_tests(field_name, field_type, value, counter, method
             "expected": "400 String too long / 200 If accepted"
         })
         counter['id'] += 1
-        min_length = max(1, len(str(value)) // 2)
+        # Ensure the generated minimum-length negative case is
+        # actually shorter than the stated minimum.
+        min_length = max(2, len(str(value)) // 2)
         tests.append({
             "id": f"{method}_VAL_{counter['id']:03d}",
             "type": "Validation" if required else "Positive",
