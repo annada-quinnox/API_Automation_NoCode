@@ -673,6 +673,145 @@ class TestCaseDatabase:
             except:
                 pass
 
+    def delete_testcase_group(
+        self,
+        group_key: str,
+        base_url: str,
+        endpoint: str,
+        method: str
+    ) -> Tuple[bool, str, int]:
+        """
+        Delete a testcase group from the active pool and saved database records.
+
+        Deletes:
+        1. Rows from active_testcase_pool for the group.
+        2. The dynamic saved testcase table for the endpoint/method.
+        3. Related records from test_case_sessions.
+        """
+
+        if not group_key:
+            return False, "Group key is required", 0
+
+        if not method:
+            return False, "HTTP method is required", 0
+
+        conn = None
+
+        try:
+            success, message = self.test_connection()
+
+            if not success:
+                return False, message, 0
+
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # ---------------------------------------------------------
+            # 1. Make sure the active pool table exists
+            # ---------------------------------------------------------
+            if not self._ensure_active_testcase_pool_table_exists(cursor):
+                return False, "Failed to verify active_testcase_pool table", 0
+
+            # ---------------------------------------------------------
+            # 2. Delete this group from the active testcase pool
+            # ---------------------------------------------------------
+            cursor.execute(
+                """
+                DELETE FROM active_testcase_pool
+                WHERE group_key = ?
+                """,
+                group_key
+            )
+
+            active_pool_deleted = cursor.rowcount
+
+            # ---------------------------------------------------------
+            # 3. Determine the dynamic saved testcase table
+            # ---------------------------------------------------------
+            table_name = self._generate_table_name(
+                base_url or "",
+                endpoint or "",
+                method
+            )
+
+            # ---------------------------------------------------------
+            # 4. Check whether the dynamic testcase table exists
+            # ---------------------------------------------------------
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_NAME = ?
+                """,
+                table_name
+            )
+
+            table_exists = cursor.fetchone()[0] > 0
+
+            saved_cases_deleted = 0
+
+            if table_exists:
+
+                # Count rows before dropping the table
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM [{table_name}]
+                    """
+                )
+
+                row = cursor.fetchone()
+                saved_cases_deleted = int(row[0]) if row and row[0] is not None else 0
+
+                # Drop the dynamic testcase table.
+                # This also removes its FK to test_case_sessions.
+                cursor.execute(
+                    f"""
+                    DROP TABLE IF EXISTS [{table_name}]
+                    """
+                )
+
+                # Remove sessions that pointed to this table.
+                cursor.execute(
+                    """
+                    DELETE FROM test_case_sessions
+                    WHERE table_name = ?
+                    """,
+                    table_name
+                )
+
+            conn.commit()
+
+            total_deleted = active_pool_deleted + saved_cases_deleted
+
+            return (
+                True,
+                (
+                    f"Deleted group '{group_key}'. "
+                    f"Active pool rows: {active_pool_deleted}; "
+                    f"saved test cases: {saved_cases_deleted}."
+                ),
+                total_deleted
+            )
+
+        except Exception as e:
+
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except Exception:
+                pass
+
+            return False, f"Failed to delete testcase group: {str(e)}", 0
+
+        finally:
+
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
+        
     def get_active_testcase_pool(self) -> Tuple[bool, str, Dict[str, List[Dict[str, Any]]], int]:
         """
         Load active testcase pool from database.

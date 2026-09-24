@@ -97,7 +97,7 @@ def parse_query_params(input_data):
 
 
 def validate_against_configs(input_data, field_configs, source="body"):
-    if not input_data or not field_configs:
+    if not field_configs:
         return True, []
 
     try:
@@ -115,6 +115,32 @@ def validate_against_configs(input_data, field_configs, source="body"):
         return False, [f"Validation error: {str(e)}"]
 
     if not isinstance(input_json, dict):
+        return True, []
+
+    # GET query parameters must be validated only against fields that
+    # are actually present in the query string. Body fields such as
+    # "name" or "photoUrl" must not be treated as missing query params.
+    if source == "query":
+        query_keys = {str(key) for key in input_json.keys()}
+        relevant_configs = {}
+
+        for field, config in field_configs.items():
+            field_name = str(field)
+            root_name = field_name.split(".", 1)[0]
+
+            if field_name in query_keys or root_name in query_keys:
+                relevant_configs[field] = config
+
+        field_configs = relevant_configs
+
+        # An empty/partial GET query is intentionally allowed to continue
+        # to normal API execution. This preserves existing positive/fallback
+        # GET behaviour instead of falsely reporting unrelated required
+        # body fields as missing query parameters.
+        if not field_configs:
+            return True, []
+
+    if not input_json or not field_configs:
         return True, []
 
     flat_input = flatten(input_json)
@@ -761,6 +787,44 @@ def save_active_testcase_pool():
     except Exception as e:
         return api_error(str(e), status_code=500)
 
+@app.route("/api/active-testcase-pool/group", methods=["DELETE"])
+def delete_active_testcase_group():
+    try:
+        data = request.get_json() or {}
+
+        group_key = str(data.get("group_key", "")).strip()
+        base_url = str(data.get("base_url", "")).strip()
+        endpoint = str(data.get("endpoint", "")).strip()
+        method = str(data.get("method", "GET")).strip().upper()
+
+        if not group_key:
+            return api_error("Group key is required")
+
+        if not endpoint:
+            return api_error("Endpoint is required")
+
+        if method not in ["GET", "POST", "PUT", "PATCH", "DELETE"]:
+            return api_error(f"Unsupported HTTP method: {method}")
+
+        db = get_database()
+
+        success, message, deleted_count = db.delete_testcase_group(
+            group_key=group_key,
+            base_url=base_url,
+            endpoint=endpoint,
+            method=method
+        )
+
+        if success:
+            return api_success({
+                "message": message,
+                "deleted_count": deleted_count
+            })
+
+        return api_error(message, status_code=500)
+
+    except Exception as e:
+        return api_error(str(e), status_code=500)
 
 @app.route("/api/active-test-suites", methods=["GET"])
 def get_active_test_suites():
@@ -772,7 +836,6 @@ def get_active_test_suites():
         return api_error(message, status_code=500)
     except Exception as e:
         return api_error(str(e), status_code=500)
-
 
 @app.route("/api/active-test-suites", methods=["POST"])
 def save_active_test_suites():
@@ -1177,7 +1240,10 @@ def execute_single_test(endpoint, method, test_case, environment="mock", base_ur
     if method in ["GET", "DELETE"]:
         if isinstance(payload, str):
             if payload.startswith("/"):
-                current_endpoint = payload
+                current_endpoint = replace_path_parameters(
+                    payload,
+                    path_parameter_values
+                )
                 payload = {}
             elif payload.startswith("?") or "=" in payload:
                 payload = parse_query_params(payload)
@@ -1216,7 +1282,10 @@ def execute_single_test(endpoint, method, test_case, environment="mock", base_ur
 
                 expected_codes = extract_response_code(expected)
 
-                # ONLY exact 400 qualifies as validation expected.
+                # Any expected-status definition containing 400 is
+                # eligible for validation fallback at the execution layer.
+                # The frontend pre-validation layer decides whether the
+                # testcase can be proven invalid locally.
                 is_expected_400 = "400" in expected_codes
 
                 if test_case.get("type") == "Positive":
