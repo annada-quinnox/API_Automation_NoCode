@@ -166,7 +166,7 @@
         #test-plan-config-view .card {
             overflow: visible;
         }
-        
+
         #config-grid {
             width: 100%;
             max-width: 100%;
@@ -1138,6 +1138,59 @@
             gap: 12px;
         }
 
+        .pool-delete-modal-content {
+            max-width: 500px;
+            width: 92%;
+            overflow: hidden;
+        }
+
+        .pool-delete-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: var(--danger);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .pool-delete-name {
+            margin-top: 18px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            color: var(--dark);
+            font-size: 0.9rem;
+            font-weight: 600;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .pool-delete-warning {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            color: #9a3412;
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
+        .pool-delete-warning i {
+            width: 17px;
+            height: 17px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
         .modal-btn {
             display: flex;
             align-items: center;
@@ -1290,7 +1343,7 @@
             </a>
         </nav>
         <div style="margin-top: auto; padding: 20px; background: #f3f4f6; border-radius: 16px">
-            <div style="font-size: 0.75rem; color: var(--gray); margin-bottom: 4px">V1.12.0 Stable Version</div>
+            <div style="font-size: 0.75rem; color: var(--gray); margin-bottom: 4px">V1.14.6 Stable Version</div>
             <div style="font-weight: 600; font-size: 0.875rem">Enterprise Edition</div>
         </div>
     </div>
@@ -1503,6 +1556,58 @@
                         Cancel
                     </button>
                     <button class="btn btn-primary" onclick="saveTestSuite()">Save & Load Suite</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="poolDeleteModal" class="modal" style="display: none"
+            onclick="if (event.target === this) closePoolDeleteModal()">
+            <div class="modal-content pool-delete-modal-content">
+                <div class="modal-header">
+                    <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                        <div class="pool-delete-icon">
+                            <i data-lucide="trash-2" style="width: 26px; height: 26px;"></i>
+                        </div>
+                        <div style="min-width: 0;">
+                            <div style="font-size: 1.15rem; font-weight: 700; color: var(--dark);">
+                                Delete Test Case Group?
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--gray); margin-top: 3px;">
+                                This action cannot be undone.
+                            </div>
+                        </div>
+                    </div>
+                    <button class="modal-close" type="button" onclick="closePoolDeleteModal()">&times;</button>
+                </div>
+
+                <div class="modal-body">
+                    <p style="color: var(--gray); font-size: 0.9rem; line-height: 1.55;">
+                        You are about to remove this entire test case group from the active pool.
+                    </p>
+
+                    <div id="poolDeleteGroupName" class="pool-delete-name"></div>
+
+                    <div class="pool-delete-warning">
+                        <i data-lucide="alert-triangle"></i>
+                        <div>
+                            <strong id="poolDeleteScenarioCount">0 scenarios</strong>
+                            will be removed from the active test case pool. Saved test suites are not deleted by this
+                            action.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="justify-content: flex-end;">
+                    <button type="button" class="btn" onclick="closePoolDeleteModal()"
+                        style="background: white; border: 1px solid var(--border); color: var(--dark); min-width: 110px;">
+                        Cancel
+                    </button>
+
+                    <button type="button" class="btn" onclick="confirmPoolDelete()"
+                        style="background: var(--danger); color: white; border: 1px solid var(--danger); min-width: 140px;">
+                        <i data-lucide="trash-2"></i>
+                        Delete Group
+                    </button>
                 </div>
             </div>
         </div>
@@ -1877,7 +1982,7 @@
                 <div class="summary-card">
                     <div class="summary-icon bg-purple"><i data-lucide="clock"></i></div>
                     <div class="summary-info">
-                        <h3>Avg Latency</h3>
+                        <h3>Max Latency</h3>
                         <p id="dash-latency">-- ms</p>
                     </div>
                 </div>
@@ -2060,6 +2165,7 @@
         let savedSuites = [];
         let lastResults = [];
         let lastExecutedTestCases = [];
+        let pendingPoolDeleteKey = null;
 
         async function persistPoolState() {
             try {
@@ -2250,16 +2356,160 @@
         }
 
         function deletePoolGroup(key) {
-            delete window.testCasePool[key];
-            schedulePoolPersistence();
-            updatePoolUI();
-            showSuccess(`Deleted scenario group: ${key}`);
+            const scenarios = window.testCasePool[key];
 
-            // If the deleted group was being viewed, close the modal
-            if (document.getElementById("viewGroupModal").style.display === "flex" && document.getElementById("viewGroupName").textContent === key) {
-                document.getElementById("viewGroupModal").style.display = "none";
+            if (!scenarios) {
+                return;
+            }
+
+            pendingPoolDeleteKey = key;
+
+            const nameEl = document.getElementById("poolDeleteGroupName");
+            const countEl = document.getElementById("poolDeleteScenarioCount");
+            const modal = document.getElementById("poolDeleteModal");
+
+            if (nameEl) {
+                nameEl.textContent = key;
+            }
+
+            if (countEl) {
+                const count = scenarios.length;
+                countEl.textContent = `${count} scenario${count === 1 ? "" : "s"}`;
+            }
+
+            if (modal) {
+                modal.style.display = "flex";
+                lucide.createIcons();
             }
         }
+
+        function closePoolDeleteModal() {
+            const modal = document.getElementById("poolDeleteModal");
+
+            if (modal) {
+                modal.style.display = "none";
+            }
+
+            pendingPoolDeleteKey = null;
+        }
+
+        async function confirmPoolDelete() {
+            const key = pendingPoolDeleteKey;
+
+            if (!key || !window.testCasePool[key]) {
+                closePoolDeleteModal();
+                return;
+            }
+
+            const scenarios = window.testCasePool[key];
+
+            if (!Array.isArray(scenarios) || scenarios.length === 0) {
+                closePoolDeleteModal();
+                return;
+            }
+
+            // Use the first testcase in the group to identify
+            // the corresponding saved database table.
+            const firstTestCase = scenarios[0];
+
+            const baseUrl =
+                firstTestCase.baseUrl ||
+                firstTestCase.base_url ||
+                "";
+
+            const endpoint =
+                firstTestCase.endpoint ||
+                "";
+
+            const method =
+                firstTestCase.method ||
+                "GET";
+
+            try {
+                // ---------------------------------------------------------
+                // Delete from backend/database FIRST
+                // ---------------------------------------------------------
+                const response = await fetch("/api/active-testcase-pool/group", {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        group_key: key,
+                        base_url: baseUrl,
+                        endpoint: endpoint,
+                        method: method
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(
+                        data.error ||
+                        data.message ||
+                        "Failed to delete test cases from database."
+                    );
+                }
+
+                // ---------------------------------------------------------
+                // Database deletion succeeded.
+                // Now remove from the UI.
+                // ---------------------------------------------------------
+                delete window.testCasePool[key];
+
+                updatePoolUI();
+
+                showSuccess(
+                    `Deleted scenario group: ${key}`
+                );
+
+                // If the deleted group was being viewed, close the modal.
+                const viewGroupModal =
+                    document.getElementById("viewGroupModal");
+
+                const viewGroupName =
+                    document.getElementById("viewGroupName");
+
+                if (
+                    viewGroupModal &&
+                    viewGroupModal.style.display === "flex" &&
+                    viewGroupName &&
+                    viewGroupName.textContent === key
+                ) {
+                    viewGroupModal.style.display = "none";
+                }
+
+                closePoolDeleteModal();
+
+            } catch (error) {
+
+                console.error(
+                    "Failed to delete testcase group:",
+                    error
+                );
+
+                showError(
+                    `Could not delete "${key}" from the database. ` +
+                    `${error.message}`
+                );
+
+                // IMPORTANT:
+                // Do NOT remove the group from the UI if the
+                // database deletion failed.
+                closePoolDeleteModal();
+            }
+        }
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                const modal = document.getElementById("poolDeleteModal");
+
+                if (modal && modal.style.display === "flex") {
+                    closePoolDeleteModal();
+                }
+            }
+        });
 
         // UPDATES SIDEBAR AND MAIN GRID
         function updatePoolUI() {
@@ -3617,76 +3867,164 @@
         }
 
         function getPerformanceConfigurationType(scenario) {
-            const text = String(scenario || "")
-                .toLowerCase()
-                .trim();
+
+            const text = String(
+                scenario || ''
+            ).toLowerCase().trim();
 
             if (!text) {
                 return null;
             }
 
             // ---------------------------------------------------------
+            // NEW PERFORMANCE MATRIX
+            // PERF-01 -> PERF-10
+            // ---------------------------------------------------------
+
+            // PERF-01 - Baseline
+            if (
+                text.includes('baseline')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-02 - Expected Load
+            if (
+                text.includes('expected load')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-03 - Peak Load
+            if (
+                text.includes('peak load')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-04 - Stress / Breaking Point
+            if (
+                text.includes('stress') ||
+                text.includes('breaking point')
+            ) {
+                return 'stress_factor';
+            }
+
+            // PERF-05 - Spike
+            if (
+                text.includes('spike')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-06 - Soak / Endurance
+            if (
+                text.includes('soak') ||
+                text.includes('endurance')
+            ) {
+                return 'endurance';
+            }
+
+            // PERF-07 - Volume / Data Scalability
+            if (
+                text.includes('volume') ||
+                text.includes('data scalability')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-08 - Rate Limit
+            if (
+                text.includes('rate-limit') ||
+                text.includes('rate limit') ||
+                text.includes('throttling')
+            ) {
+                return 'rate_limit';
+            }
+
+            // PERF-09 - Recovery
+            if (
+                text.includes('recovery')
+            ) {
+                return 'load_factor';
+            }
+
+            // PERF-10 - Concurrency
+            if (
+                text.includes('concurrency')
+            ) {
+                return 'load_factor';
+            }
+
+
+            // ---------------------------------------------------------
+            // EXISTING PERFORMANCE SCENARIOS
+            // Keep existing behavior unchanged.
+            // ---------------------------------------------------------
+
             // CACHING / CONDITIONAL REQUEST SCENARIOS
-            // ---------------------------------------------------------
-
             if (
-                text.includes("caching headers") ||
-                text.includes("cache-control") ||
-                text.includes("etag") ||
-                text.includes("conditional get") ||
-                text.includes("if-none-match")
+                text.includes('caching headers') ||
+                text.includes('cache-control') ||
+                text.includes('etag') ||
+                text.includes('conditional get') ||
+                text.includes('if-none-match')
             ) {
-                return "caching";
+                return 'caching';
             }
 
-            // ---------------------------------------------------------
+
             // RATE LIMITING
-            // ---------------------------------------------------------
-
-            if (text.includes("rate limiting") || text.includes("rate limit") || text.includes("exceed rate limit") || text.includes("requests per minute")) {
-                return "rate_limit";
-            }
-
-            // ---------------------------------------------------------
-            // LOAD / CONCURRENCY / RESPONSE-TIME SCENARIOS
-            // ---------------------------------------------------------
-
             if (
-                text.includes("response time under load") ||
-                text.includes("normal load response time") ||
-                text.includes("verify response time is within acceptable limits") ||
-                text.includes("verify response time within sla") ||
-                text.includes("verify response time is within sla") ||
-                text.includes("concurrent requests") ||
-                text.includes("concurrent users") ||
-                text.includes("concurrent get") ||
-                text.includes("concurrent delete") ||
-                text.includes("load test") ||
-                text.includes("under load")
+                text.includes('rate limiting') ||
+                text.includes('rate limit') ||
+                text.includes('exceed rate limit') ||
+                text.includes('requests per minute')
             ) {
-                return "load_factor";
+                return 'rate_limit';
             }
 
-            // ---------------------------------------------------------
+
+            // LOAD / CONCURRENCY / RESPONSE-TIME SCENARIOS
+            if (
+                text.includes('response time under load') ||
+                text.includes('normal load response time') ||
+                text.includes('verify response time is within acceptable limits') ||
+                text.includes('verify response time within sla') ||
+                text.includes('verify response time is within sla') ||
+                text.includes('concurrent requests') ||
+                text.includes('concurrent users') ||
+                text.includes('concurrent get') ||
+                text.includes('concurrent delete') ||
+                text.includes('load test') ||
+                text.includes('under load')
+            ) {
+                return 'load_factor';
+            }
+
+
             // STRESS SCENARIOS
-            // ---------------------------------------------------------
-
-            if (text.includes("stress") || text.includes("high concurrency") || text.includes("peak load")) {
-                return "stress_factor";
+            if (
+                text.includes('stress') ||
+                text.includes('high concurrency') ||
+                text.includes('peak load')
+            ) {
+                return 'stress_factor';
             }
 
-            // ---------------------------------------------------------
+
             // ENDURANCE / SOAK SCENARIOS
-            // ---------------------------------------------------------
-
-            if (text.includes("endurance") || text.includes("soak") || text.includes("sustained load") || text.includes("long-running")) {
-                return "endurance";
+            if (
+                text.includes('endurance') ||
+                text.includes('soak') ||
+                text.includes('sustained load') ||
+                text.includes('long-running')
+            ) {
+                return 'endurance';
             }
 
-            // ---------------------------------------------------------
-            // UNKNOWN PERFORMANCE SCENARIO
-            // ---------------------------------------------------------
 
+            // UNKNOWN PERFORMANCE SCENARIO
             return null;
         }
 
@@ -4762,19 +5100,37 @@
         function getExpectedStatusCodes(expected) {
             if (!expected) return [];
 
-            const text = Array.isArray(expected) ? expected.join(" ") : String(expected);
+            const text = Array.isArray(expected)
+                ? expected.join(" ")
+                : String(expected);
 
-            // Extract only real 3-digit HTTP status codes.
-            return [...new Set(text.match(/\b[1-5]\d{2}\b/g) || [])];
+            return [
+                ...new Set(
+                    text.match(/\b[1-5]\d{2}\b/g) || []
+                )
+            ];
         }
 
         function isExpected400(expected) {
             const codes = getExpectedStatusCodes(expected);
 
-            // IMPORTANT:
-            // Only exact 400 is considered a validation error.
-            // 404, 401, 403, 409, 415, 429, etc. are NOT validation errors.
-            return codes.includes("400");
+            // Frontend validation is applicable when 400 is one of the
+            // expected statuses and there is no successful 2xx alternative.
+            //
+            // "400 Bad Request"                  -> validate
+            // "400 Value out of range"           -> validate
+            // "400 / 404"                        -> validate
+            // "400 / 200"                        -> do not force validation
+            // "200 OK"                           -> do not validate
+
+            const has400 = codes.includes("400");
+            const has2xx = codes.some(
+                (code) =>
+                    Number(code) >= 200 &&
+                    Number(code) < 300
+            );
+
+            return has400 && !has2xx;
         }
 
         function getBrowserDataType(value) {
@@ -4810,6 +5166,7 @@
                 return {
                     valid: true,
                     value: {},
+                    inputKind: "body",
                 };
             }
 
@@ -4817,6 +5174,7 @@
                 return {
                     valid: true,
                     value: input,
+                    inputKind: "body",
                 };
             }
 
@@ -4826,13 +5184,56 @@
                 return {
                     valid: true,
                     value: {},
+                    inputKind: method === "GET" || method === "DELETE"
+                        ? "query"
+                        : "body",
                 };
             }
 
-            // GET/DELETE query string
-            if (method === "GET" || method === "DELETE") {
-                if (text.startsWith("?") || text.includes("=")) {
+            // GET / DELETE query or structured input.
+            if (
+                method === "GET" ||
+                method === "DELETE"
+            ) {
+                // Some generated GET validation cases are stored as a
+                // JSON object string. Parse those as structured input
+                // instead of treating the JSON text as a path.
+                if (
+                    text.startsWith("{") ||
+                    text.startsWith("[")
+                ) {
+                    try {
+                        return {
+                            valid: true,
+                            value: JSON.parse(text),
+                            inputKind: "query",
+                        };
+                    }
+                    catch (e) {
+                        return {
+                            valid: false,
+                            value: null,
+                            error: "Invalid structured GET input.",
+                            inputKind: "query",
+                        };
+                    }
+                }
+
+                // A path value can legitimately contain "=" (for example
+                // security test inputs such as SQL expressions). Therefore
+                // a leading "/" or full URL without a "?" must remain a
+                // path input instead of being mistaken for a query string.
+                const looksLikePath =
+                    text.startsWith("/") ||
+                    /^https?:\/\//i.test(text);
+
+                const looksLikeQuery =
+                    text.startsWith("?") ||
+                    (!looksLikePath && text.includes("="));
+
+                if (looksLikeQuery) {
                     const params = {};
+                    let malformedEncoding = false;
 
                     let query = text;
 
@@ -4840,39 +5241,64 @@
                         query = query.split("?")[1];
                     }
 
-                    query.split("&").forEach((pair) => {
-                        if (!pair.includes("=")) {
-                            return;
-                        }
+                    query
+                        .split("&")
+                        .forEach((pair) => {
+                            if (!pair.includes("=")) {
+                                return;
+                            }
 
-                        const [key, ...rest] = pair.split("=");
+                            const [key, ...rest] =
+                                pair.split("=");
 
-                        const rawValue = rest.join("=");
+                            const rawValue = rest.join("=");
 
-                        const value = decodeURIComponent(rawValue);
+                            let value;
+                            let malformedEncoding = false;
 
-                        if (value === "true") {
-                            params[key] = true;
-                        } else if (value === "false") {
-                            params[key] = false;
-                        } else if (value !== "" && !Number.isNaN(Number(value))) {
-                            params[key] = Number(value);
-                        } else {
-                            params[key] = value;
-                        }
-                    });
+                            try {
+                                value = decodeURIComponent(
+                                    rawValue
+                                );
+                            } catch (e) {
+                                // Keep malformed percent-encoded data
+                                // as a literal testcase value instead of
+                                // throwing "URI malformed".
+                                value = rawValue;
+                                malformedEncoding = true;
+                            }
+
+                            if (value === "true") {
+                                params[key] = true;
+                            }
+                            else if (value === "false") {
+                                params[key] = false;
+                            }
+                            else if (
+                                value !== "" &&
+                                !Number.isNaN(Number(value))
+                            ) {
+                                params[key] = Number(value);
+                            }
+                            else {
+                                params[key] = value;
+                            }
+                        });
 
                     return {
                         valid: true,
                         value: params,
+                        inputKind: "query",
+                        malformedEncoding,
                     };
                 }
 
-                // Path parameter / plain descriptive input.
+                // Path / descriptive GET input
                 return {
                     valid: true,
                     value: null,
                     nonPayload: true,
+                    inputKind: "path",
                 };
             }
 
@@ -4881,12 +5307,15 @@
                 return {
                     valid: true,
                     value: JSON.parse(text),
+                    inputKind: "body",
                 };
-            } catch (e) {
+            }
+            catch (e) {
                 return {
                     valid: false,
                     value: null,
                     error: "Invalid JSON payload.",
+                    inputKind: "body",
                 };
             }
         }
@@ -4904,18 +5333,27 @@
             let current = data;
 
             for (const part of parts) {
-                if (current !== null && typeof current === "object" && !Array.isArray(current) && Object.prototype.hasOwnProperty.call(current, part)) {
+                if (
+                    current !== null &&
+                    typeof current === "object" &&
+                    !Array.isArray(current) &&
+                    Object.prototype.hasOwnProperty.call(
+                        current,
+                        part
+                    )
+                ) {
                     current = current[part];
                     continue;
                 }
 
                 if (Array.isArray(current)) {
-                    // Supports:
-                    // tags.0.id
                     if (/^\d+$/.test(part)) {
                         const index = Number(part);
 
-                        if (index >= 0 && index < current.length) {
+                        if (
+                            index >= 0 &&
+                            index < current.length
+                        ) {
                             current = current[index];
                             continue;
                         }
@@ -4926,13 +5364,17 @@
                         };
                     }
 
-                    // Supports old style:
-                    // tags.id
-                    // by validating against first array element.
                     if (current.length > 0) {
                         current = current[0];
 
-                        if (current !== null && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, part)) {
+                        if (
+                            current !== null &&
+                            typeof current === "object" &&
+                            Object.prototype.hasOwnProperty.call(
+                                current,
+                                part
+                            )
+                        ) {
                             current = current[part];
                             continue;
                         }
@@ -4958,50 +5400,1102 @@
 
             switch (expectedType) {
                 case "email":
-                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                    if (
+                        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                    ) {
                         return "Invalid email format.";
                     }
-
                     break;
 
                 case "uuid":
-                    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+                    if (
+                        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                            value
+                        )
+                    ) {
                         return "Invalid UUID format.";
                     }
                     break;
+
                 case "url":
                     try {
                         const url = new URL(value);
-                        if (url.protocol !== "http:" && url.protocol !== "https:") {
+
+                        if (
+                            url.protocol !== "http:" &&
+                            url.protocol !== "https:"
+                        ) {
                             return "Only HTTP/HTTPS URLs are allowed.";
                         }
-                    } catch (e) {
+                    }
+                    catch (e) {
                         return "Invalid URL format.";
                     }
                     break;
+
                 case "date":
-                    if (Number.isNaN(Date.parse(value))) {
+                    if (
+                        !/^\d{4}-\d{2}-\d{2}$/.test(value)
+                    ) {
                         return "Invalid date format.";
                     }
+
+                    {
+                        const [year, month, day] =
+                            value.split("-").map(Number);
+
+                        const date =
+                            new Date(
+                                Date.UTC(
+                                    year,
+                                    month - 1,
+                                    day
+                                )
+                            );
+
+                        if (
+                            date.getUTCFullYear() !== year ||
+                            date.getUTCMonth() !== month - 1 ||
+                            date.getUTCDate() !== day
+                        ) {
+                            return "Invalid date format.";
+                        }
+                    }
                     break;
+
                 case "datetime":
-                    if (Number.isNaN(Date.parse(value))) {
+                    if (
+                        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(
+                            value
+                        ) ||
+                        Number.isNaN(Date.parse(value))
+                    ) {
                         return "Invalid datetime format.";
                     }
                     break;
+
                 case "phone":
-                    if (!/^\+?[\d\s\-()]{7,20}$/.test(value)) {
+                    if (
+                        !/^\+?[\d\s\-()]{7,20}$/.test(value)
+                    ) {
                         return "Invalid phone format.";
                     }
                     break;
             }
+
             return null;
         }
-        function validateTestCaseBeforeExecution(tc) {
-            const expected = tc.expected || tc.expected_status || "";
 
-            // Only run UI schema validation for tests that explicitly expect 400.
-            // 401/403/404/409/415/429/etc. must continue to the API.
+        function getRelevantFieldConfigsForValidation(
+            fieldConfigs,
+            inputData,
+            method,
+            inputKind
+        ) {
+            if (
+                !fieldConfigs ||
+                typeof fieldConfigs !== "object"
+            ) {
+                return {};
+            }
+
+            if (
+                (method !== "GET" && method !== "DELETE") ||
+                inputKind !== "query"
+            ) {
+                return fieldConfigs;
+            }
+
+            if (
+                !inputData ||
+                typeof inputData !== "object" ||
+                Array.isArray(inputData)
+            ) {
+                return {};
+            }
+
+            const queryKeys = new Set(
+                Object.keys(inputData)
+            );
+
+            const relevant = {};
+
+            Object.entries(fieldConfigs).forEach(
+                ([fieldPath, config]) => {
+                    const rootName =
+                        String(fieldPath).split(".")[0];
+
+                    if (
+                        queryKeys.has(String(fieldPath)) ||
+                        queryKeys.has(rootName)
+                    ) {
+                        relevant[fieldPath] = config;
+                    }
+                }
+            );
+
+            return relevant;
+        }
+
+        function collectValidationValues(
+            value,
+            path = "",
+            result = []
+        ) {
+            if (Array.isArray(value)) {
+                result.push({
+                    path,
+                    value,
+                    type: "array",
+                });
+
+                value.forEach((item, index) => {
+                    collectValidationValues(
+                        item,
+                        path
+                            ? `${path}.${index}`
+                            : String(index),
+                        result
+                    );
+                });
+
+                return result;
+            }
+
+            if (
+                value !== null &&
+                typeof value === "object"
+            ) {
+                result.push({
+                    path,
+                    value,
+                    type: "object",
+                });
+
+                Object.entries(value).forEach(
+                    ([key, nestedValue]) => {
+                        collectValidationValues(
+                            nestedValue,
+                            path
+                                ? `${path}.${key}`
+                                : key,
+                            result
+                        );
+                    }
+                );
+
+                return result;
+            }
+
+            result.push({
+                path,
+                value,
+                type: getBrowserDataType(value),
+            });
+
+            return result;
+        }
+
+        function containsSqlInjection(value) {
+            if (typeof value !== "string") {
+                return false;
+            }
+
+            return (
+                /(?:'|%27)\s*(?:or|and)\s+/i.test(value) ||
+                /\bunion\s+(?:all\s+)?select\b/i.test(value) ||
+                /\bdrop\s+table\b/i.test(value) ||
+                /(?:--|\/\*)/i.test(value) ||
+                /;\s*(?:drop|delete|update|insert|select)\b/i.test(value)
+            );
+        }
+
+        function containsXss(value) {
+            if (typeof value !== "string") {
+                return false;
+            }
+
+            return (
+                /<\s*script\b/i.test(value) ||
+                /<\/\s*script\s*>/i.test(value) ||
+                /\bon\w+\s*=/i.test(value) ||
+                /javascript\s*:/i.test(value) ||
+                /\balert\s*\(/i.test(value)
+            );
+        }
+
+        function containsPathTraversal(value) {
+            if (typeof value !== "string") {
+                return false;
+            }
+
+            return (
+                /\.\.(?:[\\/]|%2f|%5c)/i.test(value) ||
+                /%2e%2e(?:%2f|%5c)/i.test(value)
+            );
+        }
+
+        function isMixedTypeArray(arrayValue) {
+            if (!Array.isArray(arrayValue) || arrayValue.length < 2) {
+                return false;
+            }
+
+            const types = arrayValue.map(
+                (item) => getBrowserDataType(item)
+            );
+
+            return new Set(types).size > 1;
+        }
+
+        function hasNullElement(arrayValue) {
+            return (
+                Array.isArray(arrayValue) &&
+                arrayValue.some((item) => item === null)
+            );
+        }
+
+        function findNumericArrayTypeError(arrayValue) {
+            if (!Array.isArray(arrayValue)) {
+                return false;
+            }
+
+            return arrayValue.some(
+                (item) =>
+                    typeof item !== "number" ||
+                    typeof item === "boolean" ||
+                    Number.isNaN(item)
+            );
+        }
+
+        function hasEmptyObjectInsideArray(arrayValue) {
+            if (!Array.isArray(arrayValue)) {
+                return false;
+            }
+
+            return arrayValue.some(
+                (item) =>
+                    item !== null &&
+                    typeof item === "object" &&
+                    !Array.isArray(item) &&
+                    Object.keys(item).length === 0
+            );
+        }
+
+        function hasNullInsideObject(value) {
+            if (value === null) {
+                return true;
+            }
+
+            if (Array.isArray(value)) {
+                return value.some((item) =>
+                    hasNullInsideObject(item)
+                );
+            }
+
+            if (
+                value !== null &&
+                typeof value === "object"
+            ) {
+                return Object.values(value).some((item) =>
+                    hasNullInsideObject(item)
+                );
+            }
+
+            return false;
+        }
+
+        function isStrictValidIsoDate(value) {
+            if (
+                typeof value !== "string" ||
+                !/^\d{4}-\d{2}-\d{2}$/.test(value)
+            ) {
+                return false;
+            }
+
+            const [year, month, day] =
+                value.split("-").map(Number);
+
+            const date = new Date(
+                Date.UTC(
+                    year,
+                    month - 1,
+                    day
+                )
+            );
+
+            return (
+                date.getUTCFullYear() === year &&
+                date.getUTCMonth() === month - 1 &&
+                date.getUTCDate() === day
+            );
+        }
+
+        function extractPathParameterValues(
+            endpointTemplate,
+            input
+        ) {
+            const template =
+                String(endpointTemplate || "")
+                    .split("?")[0]
+                    .trim();
+
+            let candidate =
+                String(input || "")
+                    .split("?")[0]
+                    .trim();
+
+            if (!template || !candidate) {
+                return {};
+            }
+
+            // Accept either a path or a full URL.
+            try {
+                if (/^https?:\/\//i.test(candidate)) {
+                    candidate =
+                        new URL(candidate).pathname;
+                }
+            }
+            catch (e) {
+                // Keep the original candidate.
+            }
+
+            const names = [
+                ...template.matchAll(/\{([^{}]+)\}/g),
+            ].map((match) =>
+                match[1].trim()
+            );
+
+            if (!names.length) {
+                return {};
+            }
+
+            let pattern = "";
+            let lastIndex = 0;
+
+            names.forEach((name, index) => {
+                const matchText =
+                    `{${name}}`;
+
+                const markerIndex =
+                    template.indexOf(
+                        matchText,
+                        lastIndex
+                    );
+
+                if (markerIndex === -1) {
+                    return;
+                }
+
+                const staticPart =
+                    template.slice(
+                        lastIndex,
+                        markerIndex
+                    );
+
+                pattern += staticPart.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                );
+
+                // Non-greedy capture allows path-traversal test values
+                // containing "/" to still be captured.
+                pattern += "(.+?)";
+
+                lastIndex =
+                    markerIndex +
+                    matchText.length;
+            });
+
+            pattern += template
+                .slice(lastIndex)
+                .replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                );
+
+            let regex;
+
+            try {
+                regex = new RegExp(
+                    `^${pattern}/?$`
+                );
+            }
+            catch (e) {
+                return {};
+            }
+
+            const match =
+                candidate.match(regex);
+
+            if (!match) {
+                return {};
+            }
+
+            const result = {};
+
+            names.forEach((name, index) => {
+                result[name] =
+                    match[index + 1];
+            });
+
+            return result;
+        }
+
+        function validatePathParameterInput(tc) {
+            const endpoint =
+                String(tc.endpoint || "");
+
+            if (
+                !endpoint.includes("{") ||
+                !endpoint.includes("}")
+            ) {
+                return [];
+            }
+
+            const pathValues =
+                extractPathParameterValues(
+                    endpoint,
+                    tc.input
+                );
+
+            const names = Object.keys(pathValues);
+
+            if (!names.length) {
+                return [];
+            }
+
+            const scenario =
+                String(tc.scenario || "")
+                    .toLowerCase();
+
+            const errors = [];
+
+            names.forEach((name) => {
+                const value =
+                    pathValues[name];
+
+                const config =
+                    tc.field_configs &&
+                        typeof tc.field_configs === "object"
+                        ? tc.field_configs[name]
+                        : null;
+
+                let expectedType =
+                    config &&
+                        config.type
+                        ? String(config.type).toLowerCase()
+                        : "";
+
+                // Infer a numeric path parameter from its configured value
+                // when no explicit path type configuration exists.
+                if (!expectedType) {
+                    const configuredValue =
+                        tc.path_parameter_values &&
+                        tc.path_parameter_values[name];
+
+                    if (
+                        configuredValue !== undefined &&
+                        /^-?\d+$/.test(
+                            String(configuredValue)
+                        )
+                    ) {
+                        expectedType = "integer";
+                    }
+                }
+
+                if (
+                    scenario.includes("sql injection") &&
+                    containsSqlInjection(value)
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" contains a SQL injection pattern.`
+                    );
+                }
+
+                if (
+                    scenario.includes("xss") &&
+                    containsXss(value)
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" contains an XSS/script pattern.`
+                    );
+                }
+
+                if (
+                    scenario.includes("path traversal") &&
+                    containsPathTraversal(value)
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" contains a path traversal pattern.`
+                    );
+                }
+
+                if (
+                    (
+                        scenario.includes("invalid format") ||
+                        scenario.includes("string instead of numeric")
+                    ) &&
+                    expectedType === "integer" &&
+                    !/^-?\d+$/.test(String(value))
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" expected type integer, received string.`
+                    );
+                }
+
+                if (
+                    scenario.includes("negative id") &&
+                    /^-?\d+(?:\.\d+)?$/.test(
+                        String(value)
+                    ) &&
+                    Number(value) < 0
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" cannot be negative.`
+                    );
+                }
+
+                if (
+                    scenario.includes("zero id") &&
+                    String(value) === "0"
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" cannot be zero.`
+                    );
+                }
+
+                if (
+                    scenario.includes("special characters") &&
+                    /[^A-Za-z0-9._~\-]/.test(String(value))
+                ) {
+                    errors.push(
+                        `Path parameter "${name}" contains unsupported special characters.`
+                    );
+                }
+
+                if (
+                    (
+                        scenario.includes("very large") ||
+                        scenario.includes("overflow")
+                    ) &&
+                    /^-?\d+$/.test(String(value))
+                ) {
+                    const numericValue =
+                        Number(value);
+
+                    if (
+                        !Number.isSafeInteger(numericValue) ||
+                        Math.abs(numericValue) > 2147483647
+                    ) {
+                        errors.push(
+                            `Path parameter "${name}" is outside the allowed numeric range.`
+                        );
+                    }
+                }
+            });
+
+            return errors;
+        }
+
+        function validateScenarioSpecificInput(
+            tc,
+            inputData,
+            fieldConfigs
+        ) {
+            const scenario =
+                String(tc.scenario || "")
+                    .toLowerCase();
+
+            const values =
+                collectValidationValues(
+                    inputData
+                );
+
+            const errors = [];
+
+            // ---------------------------------------------------------
+            // Security validations
+            // ---------------------------------------------------------
+            if (scenario.includes("sql injection")) {
+                const suspicious =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            containsSqlInjection(
+                                entry.value
+                            )
+                    );
+
+                if (suspicious) {
+                    errors.push(
+                        `Security validation failed: field "${suspicious.path}" contains a SQL injection pattern.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("xss") ||
+                scenario.includes("script injection")
+            ) {
+                const suspicious =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            containsXss(entry.value)
+                    );
+
+                if (suspicious) {
+                    errors.push(
+                        `Security validation failed: field "${suspicious.path}" contains an XSS/script pattern.`
+                    );
+                }
+            }
+
+            if (scenario.includes("path traversal")) {
+                const suspicious =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            containsPathTraversal(
+                                entry.value
+                            )
+                    );
+
+                if (suspicious) {
+                    errors.push(
+                        `Security validation failed: field "${suspicious.path}" contains a path traversal pattern.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Generated GET query invalid-value scenarios
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("invalid query param value") ||
+                scenario.includes("invalid query parameter value")
+            ) {
+                const invalidValue =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            (
+                                /^invalid[_-]/i.test(
+                                    entry.value
+                                ) ||
+                                /@#\$%/.test(
+                                    entry.value
+                                )
+                            )
+                    );
+
+                if (invalidValue) {
+                    errors.push(
+                        `Query parameter "${invalidValue.path}" contains an invalid test value.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Null / empty validations
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("null element") ||
+                scenario.includes("contains null")
+            ) {
+                const arrayEntry =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            hasNullElement(entry.value)
+                    );
+
+                if (arrayEntry) {
+                    errors.push(
+                        `Field "${arrayEntry.path}" contains a null array element.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("empty string") ||
+                scenario.includes("empty value") ||
+                scenario.includes("whitespace only")
+            ) {
+                const emptyEntry =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            (
+                                entry.value === "" ||
+                                (
+                                    scenario.includes("whitespace") &&
+                                    entry.value.trim() === ""
+                                )
+                            )
+                    );
+
+                if (emptyEntry) {
+                    errors.push(
+                        scenario.includes("whitespace")
+                            ? `Field "${emptyEntry.path}" contains only whitespace.`
+                            : `Field "${emptyEntry.path}" cannot be empty.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Length / range validations
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("very long") ||
+                scenario.includes("long value") ||
+                scenario.includes("maximum length") ||
+                scenario.includes("max length") ||
+                scenario.includes("extremely large query values") ||
+                scenario.includes("large query value")
+            ) {
+                const longEntry =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            entry.value.length >= 1000
+                    );
+
+                if (longEntry) {
+                    errors.push(
+                        `Field "${longEntry.path}" exceeds the allowed test length (${longEntry.value.length} characters).`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("array exceeds") ||
+                scenario.includes("array size") ||
+                scenario.includes("max length for")
+            ) {
+                const largeArray =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            entry.value.length >= 1000
+                    );
+
+                if (largeArray) {
+                    errors.push(
+                        `Field "${largeArray.path}" exceeds the generated array-size validation limit (${largeArray.value.length} elements).`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("very large number") ||
+                scenario.includes("value out of range") ||
+                scenario.includes("out of range") ||
+                scenario.includes("overflow")
+            ) {
+                const largeNumber =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "number" &&
+                            (
+                                !Number.isSafeInteger(
+                                    entry.value
+                                ) ||
+                                Math.abs(entry.value) > 2147483647
+                            )
+                    );
+
+                if (largeNumber) {
+                    errors.push(
+                        `Field "${largeNumber.path}" contains a value outside the supported numeric range.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Array-content validations
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("mixed types") ||
+                scenario.includes("mix type")
+            ) {
+                const mixedArray =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            isMixedTypeArray(entry.value)
+                    );
+
+                if (mixedArray) {
+                    errors.push(
+                        `Field "${mixedArray.path}" contains mixed data types in the same array.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("numeric array") ||
+                scenario.includes("numeric array field") ||
+                scenario.includes("integers with string")
+            ) {
+                const invalidArray =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            findNumericArrayTypeError(
+                                entry.value
+                            )
+                    );
+
+                if (invalidArray) {
+                    errors.push(
+                        `Field "${invalidArray.path}" contains a non-numeric array element.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("empty array")
+            ) {
+                const emptyArray =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            entry.value.length === 0
+                    );
+
+                if (emptyArray) {
+                    errors.push(
+                        `Field "${emptyArray.path}" cannot be an empty array.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("invalid nested field type") ||
+                scenario.includes("invalid nested field")
+            ) {
+                const nestedInvalid =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            hasNullInsideObject(entry.value)
+                    );
+
+                if (nestedInvalid) {
+                    errors.push(
+                        `Field "${nestedInvalid.path}" contains invalid nested field values.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("object missing required") ||
+                scenario.includes("missing required fields")
+            ) {
+                const emptyNestedObject =
+                    values.find(
+                        (entry) =>
+                            entry.type === "array" &&
+                            hasEmptyObjectInsideArray(
+                                entry.value
+                            )
+                    );
+
+                if (emptyNestedObject) {
+                    errors.push(
+                        `Field "${emptyNestedObject.path}" contains an object with missing required fields.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("empty object")
+            ) {
+                const emptyObject =
+                    values.find(
+                        (entry) =>
+                            entry.type === "object" &&
+                            entry.value !== null &&
+                            !Array.isArray(entry.value) &&
+                            Object.keys(entry.value).length === 0
+                    );
+
+                if (emptyObject) {
+                    errors.push(
+                        `Field "${emptyObject.path}" cannot be empty.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Unknown fields
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("extra unknown") ||
+                scenario.includes("unknown field")
+            ) {
+                if (
+                    inputData &&
+                    typeof inputData === "object" &&
+                    !Array.isArray(inputData)
+                ) {
+                    const configuredNames =
+                        new Set(
+                            Object.keys(fieldConfigs || {}).map(
+                                (fieldPath) =>
+                                    String(fieldPath).split(".")[0]
+                            )
+                        );
+
+                    const unknownKeys =
+                        Object.keys(inputData).filter(
+                            (key) =>
+                                !configuredNames.has(key)
+                        );
+
+                    if (unknownKeys.length > 0) {
+                        errors.push(
+                            `Unknown field(s) present: ${unknownKeys.join(", ")}.`
+                        );
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Date-specific validations
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("future date")
+            ) {
+                const futureDate =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            isStrictValidIsoDate(
+                                entry.value
+                            ) &&
+                            new Date(
+                                `${entry.value}T00:00:00Z`
+                            ) > new Date()
+                    );
+
+                if (futureDate) {
+                    errors.push(
+                        `Field "${futureDate.path}" contains a future date.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("day out of range")
+            ) {
+                const invalidDate =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            /^\d{4}-\d{2}-\d{2}$/.test(
+                                entry.value
+                            ) &&
+                            !isStrictValidIsoDate(
+                                entry.value
+                            )
+                    );
+
+                if (invalidDate) {
+                    errors.push(
+                        `Field "${invalidDate.path}" contains an invalid calendar date.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Password-specific validations
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("weak password")
+            ) {
+                const weakPassword =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string" &&
+                            (
+                                entry.value.length < 8 ||
+                                !/[A-Za-z]/.test(entry.value) ||
+                                !/\d/.test(entry.value)
+                            )
+                    );
+
+                if (weakPassword) {
+                    errors.push(
+                        `Field "${weakPassword.path}" does not meet the minimum password strength requirements.`
+                    );
+                }
+            }
+
+            if (
+                scenario.includes("password without special")
+            ) {
+                const password =
+                    values.find(
+                        (entry) =>
+                            typeof entry.value === "string"
+                    );
+
+                if (
+                    password &&
+                    !/[^A-Za-z0-9]/.test(
+                        password.value
+                    )
+                ) {
+                    errors.push(
+                        `Field "${password.path}" must contain at least one special character.`
+                    );
+                }
+            }
+
+            // ---------------------------------------------------------
+            // Minimum length boundary
+            // ---------------------------------------------------------
+            if (
+                scenario.includes("minimum length boundary") ||
+                scenario.includes("too short")
+            ) {
+                const minimumMatch =
+                    String(tc.expected || "")
+                        .match(
+                            /min\s*:\s*(\d+)/i
+                        );
+
+                if (minimumMatch) {
+                    const minimum =
+                        Number(minimumMatch[1]);
+
+                    const shortValue =
+                        values.find(
+                            (entry) =>
+                                typeof entry.value === "string" &&
+                                entry.value.length < minimum
+                        );
+
+                    if (shortValue) {
+                        errors.push(
+                            `Field "${shortValue.path}" is shorter than the required minimum length of ${minimum}.`
+                        );
+                    }
+                }
+            }
+
+            return errors;
+        }
+
+        function validateTestCaseBeforeExecution(tc) {
+            const expected =
+                tc.expected ||
+                tc.expected_status ||
+                "";
+
             if (!isExpected400(expected)) {
                 return {
                     checked: false,
@@ -5010,241 +6504,426 @@
                 };
             }
 
-            const method = String(tc.method || "GET").toUpperCase();
-            const fieldConfigs = getFieldConfigsForTestCase(tc);
+            const method =
+                String(
+                    tc.method || "GET"
+                ).toUpperCase();
 
-            console.log("VALIDATION PRE-CHECK:", {
-                id: tc.id,
-                scenario: tc.scenario,
-                method: method,
-                expected: tc.expected,
-                expected_status: tc.expected_status,
-                fieldConfigs: fieldConfigs,
-                input: tc.input,
-            });
+            const parsed =
+                parseValidationInput(
+                    tc.input,
+                    method
+                );
 
-            if (!fieldConfigs || Object.keys(fieldConfigs).length === 0) {
-                return {
-                    checked: false,
-                    invalid: false,
-                    errors: [],
-                };
-            }
-
-            const parsed = parseValidationInput(tc.input, method);
-
-            // For path parameters / non-body inputs, don't try to apply body schema.
+            // Handle path parameters separately from body/query schema.
             if (parsed.nonPayload) {
+                const pathErrors =
+                    validatePathParameterInput(tc);
+
                 return {
-                    checked: false,
-                    invalid: false,
-                    errors: [],
+                    checked: true,
+                    invalid: pathErrors.length > 0,
+                    errors: pathErrors,
                 };
             }
 
-            if (parsed.parseError) {
+            if (
+                parsed.parseError ||
+                parsed.error
+            ) {
                 return {
                     checked: true,
                     invalid: true,
-                    errors: ["Invalid JSON payload"],
+                    errors: [
+                        parsed.error ||
+                        "Invalid JSON payload.",
+                    ],
                 };
             }
 
-            const inputData = parsed.data;
-
-            console.log("VALIDATION INPUT DEBUG:", {
-                method,
-                input: tc.input,
-                expected,
-                fieldConfigs,
-                parsed,
-                inputData,
-            });
-
-            if (inputData === null || inputData === undefined) {
+            if (parsed.malformedEncoding) {
                 return {
                     checked: true,
                     invalid: true,
+                    errors: [
+                        "The query contains malformed percent-encoding."
+                    ],
                 };
             }
+
+            const inputData =
+                parsed.data !== undefined
+                    ? parsed.data
+                    : parsed.value;
+
+            if (
+                inputData === null ||
+                inputData === undefined
+            ) {
+                return {
+                    checked: true,
+                    invalid: true,
+                    errors: [
+                        "The testcase input could not be parsed for validation.",
+                    ],
+                };
+            }
+
+            const allFieldConfigs =
+                getFieldConfigsForTestCase(tc);
+
+            const fieldConfigs =
+                getRelevantFieldConfigsForValidation(
+                    allFieldConfigs,
+                    inputData,
+                    method,
+                    parsed.inputKind
+                );
+
+            console.log(
+                "VALIDATION PRE-CHECK:",
+                {
+                    id: tc.id,
+                    scenario: tc.scenario,
+                    method,
+                    expected: tc.expected,
+                    expected_status: tc.expected_status,
+                    fieldConfigs,
+                    allFieldConfigs,
+                    parsed,
+                    inputData,
+                }
+            );
 
             const errors = [];
 
-            Object.entries(fieldConfigs).forEach(([fieldPath, config]) => {
-                const required = String(config.required).toLowerCase() === "true";
-                const expectedType = String(config.type || "").toLowerCase();
+            // ---------------------------------------------------------
+            // Configuration-based validation.
+            // ---------------------------------------------------------
+            Object.entries(fieldConfigs).forEach(
+                ([fieldPath, config]) => {
+                    const required =
+                        String(
+                            config.required
+                        ).toLowerCase() === "true";
 
-                const valueInfo = getValueFromPath(inputData, fieldPath);
+                    const expectedType =
+                        String(
+                            config.type || ""
+                        ).toLowerCase();
 
-                // -----------------------------------------
-                // Missing field
-                // -----------------------------------------
-                if (!valueInfo.exists) {
-                    if (required) {
-                        errors.push(`Required field "${fieldPath}" is missing`);
-                    }
+                    const valueInfo =
+                        getValueFromPath(
+                            inputData,
+                            fieldPath
+                        );
 
-                    // Optional field can be missing.
-                    return;
-                }
+                    if (!valueInfo.exists) {
+                        if (required) {
+                            errors.push(
+                                `Required field "${fieldPath}" is missing.`
+                            );
+                        }
 
-                const value = valueInfo.value;
-
-                // -----------------------------------------
-                // Required null
-                // -----------------------------------------
-                if (value === null) {
-                    if (required) {
-                        errors.push(`Required field "${fieldPath}" cannot be null`);
-                    }
-
-                    return;
-                }
-
-                // -----------------------------------------
-                // Empty string
-                // -----------------------------------------
-                if (typeof value === "string" && value.trim() === "" && required) {
-                    errors.push(`Required field "${fieldPath}" cannot be empty`);
-                    return;
-                }
-
-                // -----------------------------------------
-                // Type validation
-                // -----------------------------------------
-                if (expectedType) {
-                    const actualType = getBrowserDataType(value);
-
-                    let typeMatches = true;
-
-                    switch (expectedType) {
-                        case "integer":
-                            typeMatches = actualType === "integer";
-                            break;
-
-                        case "number":
-                        case "float":
-                        case "double":
-                            typeMatches = actualType === "integer" || actualType === "number";
-                            break;
-
-                        case "string":
-                        case "text":
-                        case "email":
-                        case "uuid":
-                        case "url":
-                        case "date":
-                        case "datetime":
-                        case "phone":
-                        case "password":
-                            typeMatches = actualType === "string";
-                            break;
-
-                        case "boolean":
-                            typeMatches = actualType === "boolean";
-                            break;
-
-                        case "array":
-                            typeMatches = actualType === "array";
-                            break;
-
-                        case "object":
-                            typeMatches = actualType === "object";
-                            break;
-
-                        default:
-                            typeMatches = true;
-                    }
-
-                    if (!typeMatches) {
-                        errors.push(`Field "${fieldPath}" expected type ${expectedType}, received ${actualType}`);
                         return;
                     }
-                }
 
-                // -----------------------------------------
-                // Format validation
-                // -----------------------------------------
-                if (typeof value === "string" && ["email", "uuid", "url", "date", "datetime", "phone"].includes(expectedType)) {
-                    const formatError = validateFieldFormat(value, expectedType);
+                    const value =
+                        valueInfo.value;
 
-                    if (formatError) {
-                        errors.push(`Field "${fieldPath}": ${formatError}`);
+                    if (value === null) {
+                        // For a testcase that explicitly expects 400 because
+                        // it supplied null, validate the null directly even
+                        // when the field itself is optional.
+                        const scenario =
+                            String(
+                                tc.scenario || ""
+                            ).toLowerCase();
+
+                        if (
+                            required ||
+                            scenario.includes("null")
+                        ) {
+                            errors.push(
+                                `Field "${fieldPath}" cannot be null.`
+                            );
+                        }
+
+                        return;
+                    }
+
+                    if (
+                        typeof value === "string" &&
+                        value.trim() === "" &&
+                        (
+                            required ||
+                            String(
+                                tc.scenario || ""
+                            )
+                                .toLowerCase()
+                                .includes("empty")
+                        )
+                    ) {
+                        errors.push(
+                            `Field "${fieldPath}" cannot be empty.`
+                        );
+                        return;
+                    }
+
+                    if (expectedType) {
+                        const actualType =
+                            getBrowserDataType(
+                                value
+                            );
+
+                        let typeMatches = true;
+
+                        switch (expectedType) {
+                            case "integer":
+                                typeMatches =
+                                    actualType ===
+                                    "integer";
+                                break;
+
+                            case "number":
+                            case "float":
+                            case "double":
+                                typeMatches =
+                                    actualType ===
+                                    "integer" ||
+                                    actualType ===
+                                    "number";
+                                break;
+
+                            case "string":
+                            case "text":
+                            case "email":
+                            case "uuid":
+                            case "url":
+                            case "date":
+                            case "datetime":
+                            case "phone":
+                            case "password":
+                                typeMatches =
+                                    actualType ===
+                                    "string";
+                                break;
+
+                            case "boolean":
+                                typeMatches =
+                                    actualType ===
+                                    "boolean";
+                                break;
+
+                            case "array":
+                                typeMatches =
+                                    actualType ===
+                                    "array";
+                                break;
+
+                            case "object":
+                                typeMatches =
+                                    actualType ===
+                                    "object";
+                                break;
+
+                            default:
+                                typeMatches =
+                                    true;
+                        }
+
+                        if (!typeMatches) {
+                            errors.push(
+                                `Field "${fieldPath}" expected type ${expectedType}, received ${actualType}.`
+                            );
+                            return;
+                        }
+                    }
+
+                    if (
+                        typeof value === "string" &&
+                        [
+                            "email",
+                            "uuid",
+                            "url",
+                            "date",
+                            "datetime",
+                            "phone",
+                        ].includes(expectedType)
+                    ) {
+                        const formatError =
+                            validateFieldFormat(
+                                value,
+                                expectedType
+                            );
+
+                        if (formatError) {
+                            errors.push(
+                                `Field "${fieldPath}": ${formatError}`
+                            );
+                        }
                     }
                 }
-            });
+            );
+
+            // ---------------------------------------------------------
+            // Scenario-specific validation.
+            //
+            // This covers generated 400 cases that are not simple
+            // type/null/missing-field checks, such as SQL injection,
+            // XSS, path traversal, long values, ranges, array
+            // content, and password rules.
+            // ---------------------------------------------------------
+            errors.push(
+                ...validateScenarioSpecificInput(
+                    tc,
+                    inputData,
+                    fieldConfigs
+                )
+            );
 
             return {
                 checked: true,
                 invalid: errors.length > 0,
-                errors,
+                errors: [
+                    ...new Set(errors),
+                ],
             };
         }
-        function buildPreValidationResult(tc, validationResult) {
-            const testCaseId = tc.id || tc.test_case_id || "Unknown";
 
-            const expected = tc.expected || tc.expected_status || "400";
-
-            const errors = validationResult.errors || [];
-
-            const errorSummary = errors.map((err) => `• ${String(err)}`).join("\n");
-
-            // Use the testcase name/scenario as the validation title
-            const scenario = String(tc.scenario || "Validation Error").trim();
-
-            // Convert the scenario into title case
-            const validationTitle = scenario
-                .replace(/[_-]+/g, " ")
-                .replace(/\s+/g, " ")
-                .replace(/\b\w/g, (char) => char.toUpperCase());
-
-            // Keep the explanatory message
-            let validationMessage = "The request does not match the configured validation rules.";
-
-            const scenarioLower = scenario.toLowerCase();
-
-            if (scenarioLower.includes("null value") || scenarioLower.includes("null field")) {
-                validationMessage = "A null value cannot be given for a required field.";
-            } else if (scenarioLower.includes("missing required") || scenarioLower.includes("required field missing") || scenarioLower.includes("missing field")) {
-                validationMessage = "A required field is missing. Please provide a value.";
-            } else if (scenarioLower.includes("empty value") || scenarioLower.includes("empty field") || scenarioLower.includes("empty string")) {
-                validationMessage = "An empty value cannot be given for a required field.";
-            } else if (
-                scenarioLower.includes("type mismatch") ||
-                scenarioLower.includes("invalid data type") ||
-                scenarioLower.includes("wrong data type") ||
-                scenarioLower.includes("datatype")
-            ) {
-                validationMessage = "The provided value does not match the expected data type.";
-            } else if (scenarioLower.includes("invalid email") || scenarioLower.includes("email format")) {
-                validationMessage = "The email value is not in a valid email format.";
-            } else if (scenarioLower.includes("invalid uuid") || scenarioLower.includes("uuid format")) {
-                validationMessage = "The value is not a valid UUID.";
-            } else if (scenarioLower.includes("invalid url") || scenarioLower.includes("url format")) {
-                validationMessage = "The value is not a valid HTTP/HTTPS URL.";
-            } else if (scenarioLower.includes("invalid date") || scenarioLower.includes("date format")) {
-                validationMessage = "The value is not in a valid date format.";
-            } else if (scenarioLower.includes("invalid datetime") || scenarioLower.includes("datetime format")) {
-                validationMessage = "The value is not in a valid date-time format.";
-            } else if (scenarioLower.includes("invalid phone") || scenarioLower.includes("phone format")) {
-                validationMessage = "The phone number is not in a valid format.";
-            } else if (
-                scenarioLower.includes("very long") ||
-                scenarioLower.includes("long value") ||
-                scenarioLower.includes("maximum length") ||
-                scenarioLower.includes("max length")
-            ) {
-                validationMessage = "The value exceeds the allowed length.";
-            } else if (
-                scenarioLower.includes("very large") ||
-                scenarioLower.includes("out of range") ||
-                scenarioLower.includes("large number") ||
-                scenarioLower.includes("range")
-            ) {
-                validationMessage = "The value is outside the allowed range.";
-            } else if (scenarioLower.includes("invalid json") || scenarioLower.includes("malformed json")) {
-                validationMessage = "The request body is not valid JSON.";
+        function getValidationMessageFromErrors(
+            errors
+        ) {
+            if (!errors || errors.length === 0) {
+                return "The request does not match the configured validation rules.";
             }
+
+            const errorText =
+                errors.join(" ");
+
+            if (/malformed percent-encoding/i.test(errorText)) {
+                return "The query contains malformed percent-encoding.";
+            }
+
+            if (/sql injection/i.test(errorText)) {
+                return "The request contains a SQL injection pattern.";
+            }
+
+            if (/xss|script pattern/i.test(errorText)) {
+                return "The request contains an XSS/script pattern.";
+            }
+
+            if (/path traversal/i.test(errorText)) {
+                return "The request contains a path traversal pattern.";
+            }
+
+            if (/exceeds.*length|too long/i.test(errorText)) {
+                return "The supplied value exceeds the allowed length.";
+            }
+
+            if (/outside.*range|out of range/i.test(errorText)) {
+                return "The supplied numeric value is outside the allowed range.";
+            }
+
+            if (/mixed data types/i.test(errorText)) {
+                return "The array contains mixed data types.";
+            }
+
+            if (/null/i.test(errorText)) {
+                return "A null value was supplied where it is not valid.";
+            }
+
+            if (/empty array/i.test(errorText)) {
+                return "An empty array was supplied where it is not valid.";
+            }
+
+            if (/empty/i.test(errorText)) {
+                return "An empty value was supplied where it is not valid.";
+            }
+
+            if (/missing/i.test(errorText)) {
+                return "A required field is missing.";
+            }
+
+            if (/expected type/i.test(errorText)) {
+                return "The supplied value does not match the expected data type.";
+            }
+
+            if (/email format/i.test(errorText)) {
+                return "The supplied value is not a valid email address.";
+            }
+
+            if (/uuid/i.test(errorText)) {
+                return "The supplied value is not a valid UUID.";
+            }
+
+            if (/url/i.test(errorText)) {
+                return "The supplied value is not a valid HTTP/HTTPS URL.";
+            }
+
+            if (/date/i.test(errorText)) {
+                return "The supplied value is not a valid date.";
+            }
+
+            if (/phone/i.test(errorText)) {
+                return "The supplied value is not a valid phone number.";
+            }
+
+            if (/password/i.test(errorText)) {
+                return "The supplied password does not meet the configured requirements.";
+            }
+
+            return String(errors[0]);
+        }
+
+        function buildPreValidationResult(
+            tc,
+            validationResult
+        ) {
+            const testCaseId =
+                tc.id ||
+                tc.test_case_id ||
+                "Unknown";
+
+            const expected =
+                tc.expected ||
+                tc.expected_status ||
+                "400";
+
+            const errors =
+                validationResult.errors || [];
+
+            const errorSummary =
+                errors
+                    .map(
+                        (err) =>
+                            `• ${String(err)}`
+                    )
+                    .join("\n");
+
+            const scenario =
+                String(
+                    tc.scenario ||
+                    "Validation Error"
+                ).trim();
+
+            const validationTitle =
+                scenario
+                    .replace(/[_-]+/g, " ")
+                    .replace(/\s+/g, " ")
+                    .replace(
+                        /\b\w/g,
+                        (char) =>
+                            char.toUpperCase()
+                    );
+
+            // IMPORTANT:
+            // Derive the headline from the actual validation error,
+            // rather than guessing it from the testcase scenario.
+            const validationMessage =
+                getValidationMessageFromErrors(
+                    errors
+                );
 
             return {
                 testCaseId,
@@ -5252,13 +6931,17 @@
                 statusCode: 400,
                 displayStatusCode: "4XX",
 
-                responseBody: JSON.stringify({
-                    error: "Validation Error",
-                    message: validationMessage,
-                    details: errors,
-                }),
+                responseBody:
+                    JSON.stringify({
+                        error:
+                            "Validation Error",
+                        message:
+                            validationMessage,
+                        details: errors,
+                    }),
 
-                validation_pre_execution: true,
+                validation_pre_execution:
+                    true,
 
                 details:
                     `❌ Validation Error\n` +
@@ -5641,7 +7324,7 @@
                         <div style="font-size: 0.8rem; color: var(--gray);"><i data-lucide="clock" style="width: 12px; height: 12px; display: inline;"></i> ${runData.date}</div>
                     </div>
                     <div style="font-size: 0.85rem; color: var(--dark); margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 8px;">
-                        <strong>Users:</strong> ${runData.users} &nbsp;|&nbsp; <strong>RPS:</strong> ${runData.rps} &nbsp;|&nbsp; <strong>Avg Latency:</strong> ${runData.latency}ms &nbsp;|&nbsp; <strong>Failures:</strong> <span style="color:${isSuccess ? "inherit" : "var(--danger)"}">${runData.failures}</span>
+                        <strong>Users:</strong> ${runData.users} &nbsp;|&nbsp; <strong>RPS:</strong> ${runData.rps} &nbsp;|&nbsp; <strong>Max Latency:</strong> ${runData.latency}ms &nbsp;|&nbsp; <strong>Failures:</strong> <span style="color:${isSuccess ? "inherit" : "var(--danger)"}">${runData.failures}</span>
                     </div>
                 `;
             }
@@ -5649,87 +7332,212 @@
             lucide.createIcons();
         }
         function getPerformanceConfigForScenario(tc) {
+
             const config = tc.perf_config || {};
-            const scenario = String(tc.scenario || "").toLowerCase();
+
+            const scenario = String(
+                tc.scenario || ''
+            ).toLowerCase().trim();
 
             let type = null;
 
-            // -----------------------------
-            // Identify performance type
-            // -----------------------------
 
-            if (scenario.includes("rate limit") || scenario.includes("rate limiting") || tc.expected_status === 429 || String(tc.expected || "").includes("429")) {
-                type = "rate_limit";
-            } else if (scenario.includes("stress")) {
-                type = "stress_factor";
-            } else if (scenario.includes("load") || scenario.includes("response time")) {
-                type = "load_factor";
-            } else if (scenario.includes("endurance")) {
-                type = "endurance";
+            // ---------------------------------------------------------
+            // NEW PERFORMANCE MATRIX
+            // PERF-01 -> PERF-10
+            // ---------------------------------------------------------
+
+            // PERF-01 - Baseline
+            if (
+                scenario.includes('baseline')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-02 - Expected Load
+            else if (
+                scenario.includes('expected load')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-03 - Peak Load
+            else if (
+                scenario.includes('peak load')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-04 - Stress / Breaking Point
+            else if (
+                scenario.includes('stress') ||
+                scenario.includes('breaking point')
+            ) {
+                type = 'stress_factor';
+            }
+
+            // PERF-05 - Spike
+            else if (
+                scenario.includes('spike')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-06 - Soak / Endurance
+            else if (
+                scenario.includes('soak') ||
+                scenario.includes('endurance')
+            ) {
+                type = 'endurance';
+            }
+
+            // PERF-07 - Volume
+            else if (
+                scenario.includes('volume') ||
+                scenario.includes('data scalability')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-08 - Rate Limit
+            else if (
+                scenario.includes('rate-limit') ||
+                scenario.includes('rate limit') ||
+                scenario.includes('throttling')
+            ) {
+                type = 'rate_limit';
+            }
+
+            // PERF-09 - Recovery
+            else if (
+                scenario.includes('recovery')
+            ) {
+                type = 'load_factor';
+            }
+
+            // PERF-10 - Concurrency
+            else if (
+                scenario.includes('concurrency')
+            ) {
+                type = 'load_factor';
+            }
+
+
+            // ---------------------------------------------------------
+            // EXISTING PERFORMANCE SCENARIOS
+            // Keep existing behavior unchanged.
+            // ---------------------------------------------------------
+
+            // RATE LIMIT
+            else if (
+                scenario.includes('rate limit') ||
+                scenario.includes('rate limiting') ||
+                tc.expected_status === 429 ||
+                String(tc.expected || '').includes('429')
+            ) {
+                type = 'rate_limit';
+            }
+
+            // STRESS
+            else if (
+                scenario.includes('stress')
+            ) {
+                type = 'stress_factor';
+            }
+
+            // LOAD
+            else if (
+                scenario.includes('load') ||
+                scenario.includes('response time')
+            ) {
+                type = 'load_factor';
+            }
+
+            // ENDURANCE
+            else if (
+                scenario.includes('endurance')
+            ) {
+                type = 'endurance';
             }
 
             // CACHING
             else if (
-                scenario.includes("caching") ||
-                scenario.includes("cache") ||
-                scenario.includes("etag") ||
-                scenario.includes("cache-control") ||
-                scenario.includes("conditional get")
+                scenario.includes('caching') ||
+                scenario.includes('cache') ||
+                scenario.includes('etag') ||
+                scenario.includes('cache-control') ||
+                scenario.includes('conditional get')
             ) {
-                type = "caching";
+                type = 'caching';
             }
+
+
+            // ---------------------------------------------------------
+            // Unknown performance scenario
+            // ---------------------------------------------------------
 
             if (!type) {
                 return null;
             }
 
-            // =====================================
-            // CACHING CONFIGURATION
-            // =====================================
 
-            if (type === "caching") {
+            // ---------------------------------------------------------
+            // CACHING CONFIGURATION
+            // ---------------------------------------------------------
+
+            if (type === 'caching') {
+
                 const cachingValue = config.value;
 
-                if (cachingValue === undefined || cachingValue === null || cachingValue === "") {
+                if (
+                    cachingValue === undefined ||
+                    cachingValue === null ||
+                    cachingValue === ''
+                ) {
                     return null;
                 }
 
                 return {
-                    type: "caching",
-                    value: String(cachingValue),
+                    type: 'caching',
+                    value: String(cachingValue)
                 };
             }
 
-            // =====================================
+
+            // ---------------------------------------------------------
             // NUMERIC PERFORMANCE CONFIGURATIONS
-            // =====================================
+            // ---------------------------------------------------------
 
             const value = config.value;
             const spawnRate = config.spawn;
             const duration = config.duration;
-            const unit = config.unit || "seconds";
+            const unit = config.unit || 'seconds';
+
 
             if (
                 value === undefined ||
                 value === null ||
-                value === "" ||
+                value === '' ||
                 spawnRate === undefined ||
                 spawnRate === null ||
-                spawnRate === "" ||
+                spawnRate === '' ||
                 duration === undefined ||
                 duration === null ||
-                duration === ""
+                duration === ''
             ) {
                 return null;
             }
 
+
             let runTime = `${duration}s`;
 
-            if (unit === "minutes") {
+            if (unit === 'minutes') {
                 runTime = `${duration}m`;
-            } else if (unit === "hours") {
+            }
+            else if (unit === 'hours') {
                 runTime = `${duration}h`;
             }
+
 
             return {
                 type,
@@ -5737,7 +7545,7 @@
                 spawnRate: Number(spawnRate),
                 duration: Number(duration),
                 unit,
-                runTime,
+                runTime
             };
         }
         async function executePerformanceTest() {
