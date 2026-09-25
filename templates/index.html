@@ -1560,7 +1560,62 @@
             </div>
         </div>
 
-        <div id="poolDeleteModal" class="modal" style="display: none"
+        <div id="duplicateSuiteModal" class="modal" style="display: none; z-index: 1200;">
+            <div class="modal-content" style="max-width: 520px; width: 92%">
+                <div class="modal-header">
+                    <h3>
+                        <i data-lucide="copy"
+                            style="width: 20px; height: 20px; margin-right: 8px; color: var(--primary)">
+                        </i>
+                        Test Suite Already Exists
+                    </h3>
+
+                    <button class="modal-close" type="button" onclick="closeDuplicateSuiteModal()">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <p style="margin-bottom: 12px; color: var(--dark); line-height: 1.5;">
+                        A test suite with this name already exists:
+                    </p>
+
+                    <div style="
+                    padding: 12px 14px;
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    background: #f9fafb;
+                    color: var(--primary);
+                    font-weight: 600;
+                    word-break: break-word;
+                " id="duplicateSuiteName">
+                    </div>
+
+                    <p style="margin-top: 14px; color: var(--gray); font-size: 0.88rem; line-height: 1.5;">
+                        You can overwrite the existing suite with the currently selected
+                        test cases, or choose a different suite name.
+                    </p>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn" onclick="chooseNewSuiteName()" style="
+                    border: 1px solid var(--border);
+                    background: white;
+                    color: var(--dark);
+                ">
+                        <i data-lucide="pencil"></i>
+                        Choose New Name
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="overwriteDuplicateSuite()">
+                        <i data-lucide="refresh-cw"></i>
+                        Overwrite Existing
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="poolDeleteModal" class="modal" style="display: none; z-index: 1100;"
             onclick="if (event.target === this) closePoolDeleteModal()">
             <div class="modal-content pool-delete-modal-content">
                 <div class="modal-header">
@@ -1607,6 +1662,58 @@
                         style="background: var(--danger); color: white; border: 1px solid var(--danger); min-width: 140px;">
                         <i data-lucide="trash-2"></i>
                         Delete Group
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="suiteDeleteModal" class="modal" style="display: none; z-index: 1100;"
+            onclick="if (event.target === this) closeSuiteDeleteModal()">
+            <div class="modal-content pool-delete-modal-content">
+                <div class="modal-header">
+                    <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                        <div class="pool-delete-icon">
+                            <i data-lucide="trash-2" style="width: 26px; height: 26px;"></i>
+                        </div>
+                        <div style="min-width: 0;">
+                            <div style="font-size: 1.15rem; font-weight: 700; color: var(--dark);">
+                                Delete Test Suite?
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--gray); margin-top: 3px;">
+                                This action cannot be undone.
+                            </div>
+                        </div>
+                    </div>
+                    <button class="modal-close" type="button" onclick="closeSuiteDeleteModal()">&times;</button>
+                </div>
+
+                <div class="modal-body">
+                    <p style="color: var(--gray); font-size: 0.9rem; line-height: 1.55;">
+                        You are about to remove the selected test suite from Test Lab.
+                    </p>
+
+                    <div id="suiteDeleteName" class="pool-delete-name"></div>
+
+                    <div class="pool-delete-warning">
+                        <i data-lucide="alert-triangle"></i>
+                        <div>
+                            <strong id="suiteDeleteScenarioCount">0 scenarios</strong>
+                            will be removed from this test suite. The active test case pool will not be deleted.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="justify-content: flex-end;">
+                    <button type="button" class="btn" onclick="closeSuiteDeleteModal()"
+                        style="background: white; border: 1px solid var(--border); color: var(--dark); min-width: 110px;">
+                        Cancel
+                    </button>
+
+                    <button type="button" class="btn"
+                        onclick="confirmSuiteDelete()"
+                        style="background: var(--danger); color: white; border: 1px solid var(--danger); min-width: 140px;">
+                        <i data-lucide="trash-2"></i>
+                        Delete Suite
                     </button>
                 </div>
             </div>
@@ -1781,7 +1888,7 @@
                                 <label>Method</label>
                                 <select id="method" required>
                                     <option value="" disabled selected>Select Method</option>
-                                    <option value="All">All Methods</option>
+                                    <!-- <option value="">All Methods</option> -->
                                     <option value="GET">GET</option>
                                     <option value="POST">POST</option>
                                     <option value="PUT">PUT</option>
@@ -2166,6 +2273,53 @@
         let lastResults = [];
         let lastExecutedTestCases = [];
         let pendingPoolDeleteKey = null;
+        let pendingSuiteDeleteId = null;
+        let pendingSuiteSave = null;
+
+        // Cumulative dashboard success-rate state.
+        // This lives for the lifetime of the current page/session and is
+        // shared by both functional and performance executions.
+        let cumulativeSuccessMetrics = {
+            total: 0,
+            passed: 0,
+            failed: 0,
+        };
+
+        function updateCumulativeSuccessRate() {
+            const successEl = document.getElementById("dash-success");
+            if (!successEl) {
+                return;
+            }
+
+            const rate =
+                cumulativeSuccessMetrics.total > 0
+                    ? Math.round(
+                        (cumulativeSuccessMetrics.passed /
+                            cumulativeSuccessMetrics.total) *
+                        100
+                    )
+                    : 0;
+
+            successEl.textContent = `${rate}%`;
+        }
+
+        function recordCumulativeExecution(passed, total) {
+            const safeTotal = Number(total) || 0;
+            const safePassed = Math.max(
+                0,
+                Math.min(Number(passed) || 0, safeTotal)
+            );
+
+            if (safeTotal <= 0) {
+                return;
+            }
+
+            cumulativeSuccessMetrics.total += safeTotal;
+            cumulativeSuccessMetrics.passed += safePassed;
+            cumulativeSuccessMetrics.failed += safeTotal - safePassed;
+
+            updateCumulativeSuccessRate();
+        }
 
         async function persistPoolState() {
             try {
@@ -2502,12 +2656,23 @@
         }
 
         document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape") {
-                const modal = document.getElementById("poolDeleteModal");
+            if (event.key !== "Escape") return;
 
-                if (modal && modal.style.display === "flex") {
-                    closePoolDeleteModal();
-                }
+            const poolModal = document.getElementById("poolDeleteModal");
+            if (poolModal && poolModal.style.display === "flex") {
+                closePoolDeleteModal();
+                return;
+            }
+
+            const suiteDeleteModal = document.getElementById("suiteDeleteModal");
+            if (suiteDeleteModal && suiteDeleteModal.style.display === "flex") {
+                closeSuiteDeleteModal();
+                return;
+            }
+
+            const duplicateModal = document.getElementById("duplicateSuiteModal");
+            if (duplicateModal && duplicateModal.style.display === "flex") {
+                closeDuplicateSuiteModal();
             }
         });
 
@@ -4781,34 +4946,137 @@
 
         function saveTestSuite() {
             const checked = document.querySelectorAll(".suite-builder-cb:checked");
+
             if (checked.length === 0) {
                 showError("Please select at least one scenario to save the suite.");
                 return;
             }
 
-            const suiteName = document.getElementById("suiteNameInput").value || "Unnamed Suite";
+            const suiteName =
+                document.getElementById("suiteNameInput").value.trim() ||
+                "Unnamed Suite";
+
             const newSuiteCases = Array.from(checked).map((cb) => {
                 const key = cb.getAttribute("data-key");
                 const idx = parseInt(cb.getAttribute("data-index"));
                 return window.testCasePool[key][idx];
             });
 
+            // ---------------------------------------------------------
+            // Duplicate suite-name check
+            // ---------------------------------------------------------
+            const existingSuite = savedSuites.find(
+                (suite) =>
+                    String(suite.name || "").trim().toLowerCase() ===
+                    suiteName.toLowerCase()
+            );
+
+            if (existingSuite) {
+                pendingSuiteSave = {
+                    suiteName,
+                    cases: newSuiteCases,
+                    existingSuiteId: existingSuite.id,
+                };
+
+                const duplicateNameEl =
+                    document.getElementById("duplicateSuiteName");
+
+                if (duplicateNameEl) {
+                    duplicateNameEl.textContent = suiteName;
+                }
+
+                document.getElementById("duplicateSuiteModal").style.display = "flex";
+                lucide.createIcons();
+                return;
+            }
+
+            // ---------------------------------------------------------
+            // Normal suite creation
+            // ---------------------------------------------------------
             const suiteId = Date.now().toString();
-            savedSuites.push({ id: suiteId, name: suiteName, cases: newSuiteCases });
+
+            savedSuites.push({
+                id: suiteId,
+                name: suiteName,
+                cases: newSuiteCases,
+            });
 
             const selector = document.getElementById("suiteSelector");
             const newOption = document.createElement("option");
             newOption.value = suiteId;
-            newOption.textContent = `${suiteName} (${newSuiteCases.length} cases)`;
+            newOption.textContent =
+                `${suiteName} (${newSuiteCases.length} cases)`;
+
             selector.appendChild(newOption);
             selector.value = suiteId;
 
             renderSuiteSelector(suiteId);
 
             document.getElementById("suiteModal").style.display = "none";
+
             showSuccess(`Saved and loaded suite: ${suiteName}`);
 
             loadSelectedSuite();
+        }
+
+        function closeDuplicateSuiteModal() {
+            document.getElementById("duplicateSuiteModal").style.display = "none";
+            pendingSuiteSave = null;
+        }
+
+        function chooseNewSuiteName() {
+            document.getElementById("duplicateSuiteModal").style.display = "none";
+
+            const suiteNameInput =
+                document.getElementById("suiteNameInput");
+
+            if (suiteNameInput) {
+                suiteNameInput.focus();
+                suiteNameInput.select();
+            }
+
+            pendingSuiteSave = null;
+        }
+
+        function overwriteDuplicateSuite() {
+            if (!pendingSuiteSave) {
+                closeDuplicateSuiteModal();
+                return;
+            }
+
+            const {
+                suiteName,
+                cases,
+                existingSuiteId
+            } = pendingSuiteSave;
+
+            const existingSuite = savedSuites.find(
+                (suite) => suite.id === existingSuiteId
+            );
+
+            if (!existingSuite) {
+                closeDuplicateSuiteModal();
+                showError("The existing test suite could not be found.");
+                return;
+            }
+
+            // Replace the existing suite contents.
+            existingSuite.name = suiteName;
+            existingSuite.cases = cases;
+
+            // Close duplicate popup.
+            document.getElementById("duplicateSuiteModal").style.display = "none";
+
+            // Keep the overwritten suite selected.
+            renderSuiteSelector(existingSuite.id);
+
+            loadSelectedSuite();
+
+            showSuccess(
+                `Test suite overwritten successfully: ${suiteName}`
+            );
+
+            pendingSuiteSave = null;
         }
 
         function createAndLoadSuiteFromCases(cases, suiteName) {
@@ -4852,12 +5120,69 @@
         function deleteActiveSuite() {
             const selector = document.getElementById("suiteSelector");
             const suiteId = selector.value;
+
             if (!suiteId) return;
 
+            const suite = savedSuites.find((s) => s.id === suiteId);
+            if (!suite) return;
+
+            pendingSuiteDeleteId = suiteId;
+
+            const nameEl = document.getElementById("suiteDeleteName");
+            const countEl = document.getElementById("suiteDeleteScenarioCount");
+            const modal = document.getElementById("suiteDeleteModal");
+
+            if (nameEl) {
+                nameEl.textContent = suite.name || "Unnamed Suite";
+            }
+
+            if (countEl) {
+                const count = Array.isArray(suite.cases) ? suite.cases.length : 0;
+                countEl.textContent = `${count} scenario${count === 1 ? "" : "s"}`;
+            }
+
+            if (modal) {
+                modal.style.display = "flex";
+                lucide.createIcons();
+            }
+        }
+
+        function closeSuiteDeleteModal() {
+            const modal = document.getElementById("suiteDeleteModal");
+
+            if (modal) {
+                modal.style.display = "none";
+            }
+
+            pendingSuiteDeleteId = null;
+        }
+
+        function confirmSuiteDelete() {
+            const suiteId = pendingSuiteDeleteId;
+
+            if (!suiteId) {
+                closeSuiteDeleteModal();
+                return;
+            }
+
+            const suite = savedSuites.find((s) => s.id === suiteId);
+
+            if (!suite) {
+                closeSuiteDeleteModal();
+                showError("The selected test suite could not be found.");
+                return;
+            }
+
+            const suiteName = suite.name || "Unnamed Suite";
+
             savedSuites = savedSuites.filter((s) => s.id !== suiteId);
+
             renderSuiteSelector();
             loadSelectedSuite();
-            showSuccess("Test suite deleted successfully.");
+
+            closeSuiteDeleteModal();
+
+            showSuccess(`Test suite deleted successfully: ${suiteName}`);
         }
 
         function renderTestLabTables() {
@@ -7239,12 +7564,17 @@
                 // STEP 6 — DASHBOARD METRICS
                 // =====================================================
 
-                if (document.getElementById("dash-success")) {
-                    document.getElementById("dash-success").textContent = `${Math.round((passed / finalResults.length) * 100)}%`;
-                }
+                // Accumulate this execution into the shared dashboard
+                // success rate instead of replacing the previous rate.
+                recordCumulativeExecution(passed, finalResults.length);
 
+                // Keep both dashboard metrics cumulative.
+                updateCumulativeSuccessRate();
+
+                // Keep the dashboard failure count cumulative as well.
                 if (document.getElementById("dash-failures")) {
-                    document.getElementById("dash-failures").textContent = finalResults.length - passed;
+                    document.getElementById("dash-failures").textContent =
+                        cumulativeSuccessMetrics.failed;
                 }
 
                 const latency = Math.round(performance.now() - start);
@@ -7332,222 +7662,107 @@
             lucide.createIcons();
         }
         function getPerformanceConfigForScenario(tc) {
+            // The saved testcase configuration is the single source of truth
+            // for performance execution. Scenario text is not used to invent
+            // or override any execution value.
+            const config = tc && tc.perf_config;
 
-            const config = tc.perf_config || {};
-
-            const scenario = String(
-                tc.scenario || ''
-            ).toLowerCase().trim();
-
-            let type = null;
-
-
-            // ---------------------------------------------------------
-            // NEW PERFORMANCE MATRIX
-            // PERF-01 -> PERF-10
-            // ---------------------------------------------------------
-
-            // PERF-01 - Baseline
-            if (
-                scenario.includes('baseline')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-02 - Expected Load
-            else if (
-                scenario.includes('expected load')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-03 - Peak Load
-            else if (
-                scenario.includes('peak load')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-04 - Stress / Breaking Point
-            else if (
-                scenario.includes('stress') ||
-                scenario.includes('breaking point')
-            ) {
-                type = 'stress_factor';
-            }
-
-            // PERF-05 - Spike
-            else if (
-                scenario.includes('spike')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-06 - Soak / Endurance
-            else if (
-                scenario.includes('soak') ||
-                scenario.includes('endurance')
-            ) {
-                type = 'endurance';
-            }
-
-            // PERF-07 - Volume
-            else if (
-                scenario.includes('volume') ||
-                scenario.includes('data scalability')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-08 - Rate Limit
-            else if (
-                scenario.includes('rate-limit') ||
-                scenario.includes('rate limit') ||
-                scenario.includes('throttling')
-            ) {
-                type = 'rate_limit';
-            }
-
-            // PERF-09 - Recovery
-            else if (
-                scenario.includes('recovery')
-            ) {
-                type = 'load_factor';
-            }
-
-            // PERF-10 - Concurrency
-            else if (
-                scenario.includes('concurrency')
-            ) {
-                type = 'load_factor';
-            }
-
-
-            // ---------------------------------------------------------
-            // EXISTING PERFORMANCE SCENARIOS
-            // Keep existing behavior unchanged.
-            // ---------------------------------------------------------
-
-            // RATE LIMIT
-            else if (
-                scenario.includes('rate limit') ||
-                scenario.includes('rate limiting') ||
-                tc.expected_status === 429 ||
-                String(tc.expected || '').includes('429')
-            ) {
-                type = 'rate_limit';
-            }
-
-            // STRESS
-            else if (
-                scenario.includes('stress')
-            ) {
-                type = 'stress_factor';
-            }
-
-            // LOAD
-            else if (
-                scenario.includes('load') ||
-                scenario.includes('response time')
-            ) {
-                type = 'load_factor';
-            }
-
-            // ENDURANCE
-            else if (
-                scenario.includes('endurance')
-            ) {
-                type = 'endurance';
-            }
-
-            // CACHING
-            else if (
-                scenario.includes('caching') ||
-                scenario.includes('cache') ||
-                scenario.includes('etag') ||
-                scenario.includes('cache-control') ||
-                scenario.includes('conditional get')
-            ) {
-                type = 'caching';
-            }
-
-
-            // ---------------------------------------------------------
-            // Unknown performance scenario
-            // ---------------------------------------------------------
-
-            if (!type) {
+            if (!config || config.selected === false) {
                 return null;
             }
 
+            const type = String(config.type || "").trim().toLowerCase();
 
-            // ---------------------------------------------------------
-            // CACHING CONFIGURATION
-            // ---------------------------------------------------------
+            if (![
+                "load_factor",
+                "stress_factor",
+                "endurance",
+                "rate_limit",
+                "caching",
+            ].includes(type)) {
+                return null;
+            }
 
-            if (type === 'caching') {
-
+            if (type === "caching") {
                 const cachingValue = config.value;
 
                 if (
                     cachingValue === undefined ||
                     cachingValue === null ||
-                    cachingValue === ''
+                    String(cachingValue).trim() === ""
                 ) {
                     return null;
                 }
 
+                const normalizedCaching = String(cachingValue).trim();
+
+                if (!["Yes", "No"].includes(normalizedCaching)) {
+                    return null;
+                }
+
                 return {
-                    type: 'caching',
-                    value: String(cachingValue)
+                    type: "caching",
+                    value: normalizedCaching,
                 };
             }
-
-
-            // ---------------------------------------------------------
-            // NUMERIC PERFORMANCE CONFIGURATIONS
-            // ---------------------------------------------------------
 
             const value = config.value;
             const spawnRate = config.spawn;
             const duration = config.duration;
-            const unit = config.unit || 'seconds';
-
+            const unit = String(config.unit || "").trim().toLowerCase();
 
             if (
                 value === undefined ||
                 value === null ||
-                value === '' ||
+                value === "" ||
                 spawnRate === undefined ||
                 spawnRate === null ||
-                spawnRate === '' ||
+                spawnRate === "" ||
                 duration === undefined ||
                 duration === null ||
-                duration === ''
+                duration === "" ||
+                !unit
             ) {
                 return null;
             }
 
-
-            let runTime = `${duration}s`;
-
-            if (unit === 'minutes') {
-                runTime = `${duration}m`;
-            }
-            else if (unit === 'hours') {
-                runTime = `${duration}h`;
+            if (!["seconds", "minutes", "hours"].includes(unit)) {
+                return null;
             }
 
+            const numericValue = Number(value);
+            const numericSpawnRate = Number(spawnRate);
+            const numericDuration = Number(duration);
+
+            if (
+                !Number.isFinite(numericValue) ||
+                !Number.isFinite(numericSpawnRate) ||
+                !Number.isFinite(numericDuration) ||
+                numericValue <= 0 ||
+                numericSpawnRate <= 0 ||
+                numericDuration <= 0
+            ) {
+                return null;
+            }
+
+            let runTime = `${numericDuration}s`;
+
+            if (unit === "minutes") {
+                runTime = `${numericDuration}m`;
+            } else if (unit === "hours") {
+                runTime = `${numericDuration}h`;
+            }
 
             return {
                 type,
-                value: Number(value),
-                spawnRate: Number(spawnRate),
-                duration: Number(duration),
+                value: numericValue,
+                spawnRate: numericSpawnRate,
+                duration: numericDuration,
                 unit,
-                runTime
+                runTime,
             };
         }
+
         async function executePerformanceTest() {
             if (!activeSuiteCases || activeSuiteCases.length === 0) {
                 showError("No active suite loaded.");
@@ -7933,10 +8148,20 @@ ${sampleOutput}`;
                 }
             }
 
-            if (document.getElementById("dash-failures")) document.getElementById("dash-failures").textContent = totalFails;
-            if (document.getElementById("dash-success")) {
-                const sr = totalReqs > 0 ? Math.round(((totalReqs - totalFails) / totalReqs) * 100) : 0;
-                document.getElementById("dash-success").textContent = `${sr}%`;
+            // Accumulate performance scenario results into the same
+            // dashboard success rate used by functional execution.
+            // The metric is based on test-case/scenario results, not the
+            // number of HTTP requests generated by a load test.
+            recordCumulativeExecution(passed, total);
+
+            // Keep both dashboard metrics cumulative.
+            updateCumulativeSuccessRate();
+
+            // Keep the dashboard failure count cumulative across
+            // both functional and performance executions.
+            if (document.getElementById("dash-failures")) {
+                document.getElementById("dash-failures").textContent =
+                    cumulativeSuccessMetrics.failed;
             }
 
             btn.disabled = false;
