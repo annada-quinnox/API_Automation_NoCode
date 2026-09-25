@@ -1,8 +1,10 @@
 import csv
 import json
+import math
 import os
 import re
 import subprocess
+import sys
 import time
 from performance.caching import run_etag_caching_test
 from performance.load_factor import build_load_factor_script
@@ -251,277 +253,452 @@ def _build_locust_metrics(row):
     }
 
 def build_url(endpoint, base_url):
-    base_url = (base_url or "").rstrip('/')
-    endpoint = endpoint or '/'
+    base_url = (base_url or "").rstrip("/")
+    endpoint = endpoint or "/"
 
-    if not endpoint.startswith('/'):
-        endpoint = '/' + endpoint
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
 
     return base_url + endpoint
 
 
-def run_performance_test(data):
+PERFORMANCE_TYPES = {
+    "load_factor",
+    "stress_factor",
+    "endurance",
+    "rate_limit",
+    "caching",
+}
+
+
+OBSERVATIONAL_EXPECTATION_KEYWORDS = (
+    "capture",
+    "monitor",
+    "stable",
+    "within sla",
+    "error rate",
+    "throughput",
+    "response time",
+    "latency",
+    "breaking point",
+    "degradation",
+    "recovery time",
+    "performance should",
+    "return toward",
+    "large payload",
+    "large response",
+    "simultaneous",
+    "race-condition",
+    "deadlock",
+    "no continuous",
+    "below threshold",
+    "above threshold",
+)
+
+
+def replace_path_parameters(endpoint, path_parameter_values=None):
     """
-    Executes the existing performance-testing implementation.
+    Resolve every {placeholder} using the testcase's configured path values.
 
-    This is intentionally kept behavior-compatible with the
-    current implementation in app.py. Performance-type-specific
-    separation will be introduced in the next phase.
+    Performance execution must never send an unresolved placeholder to the
+    target API. A missing value is reported by the caller instead.
     """
 
-    base_url = data.get('baseUrl', 'mock')
+    values = path_parameter_values or {}
 
-    if base_url == 'mock' or not base_url:
-        return {
-            "success": False,
-            "error": "Performance testing requires a real Base URL, not a mock environment."
-        }, 400
+    def replace_match(match):
+        name = match.group(1).strip()
+        value = values.get(name)
 
-    test_case = data.get('testCase', {})
+        if value is None and name in values:
+            value = values[name]
 
-    method = test_case.get(
-        'method',
-        data.get('method', 'GET')
-    ).upper()
+        if value is None:
+            return match.group(0)
 
-    expected = test_case.get('expected', '200')
-    expected_codes = extract_response_code(expected)
+        return str(value)
 
-    current_endpoint = test_case.get(
-        'endpoint',
-        data.get('endpoint', '/search')
-    )
+    return re.sub(r"\{([^{}]+)\}", replace_match, str(endpoint or "/"))
 
-    payload = test_case.get('input', {})
 
-    performance_config = data.get('performanceConfig') or {}
-    performance_type = performance_config.get('type')
+def _find_unresolved_path_parameters(endpoint):
+    return re.findall(r"\{([^{}]+)\}", str(endpoint or ""))
 
-    is_performance_test = performance_type in [
-        'rate_limit',
-        'load_factor',
-        'stress_factor',
-        'endurance',
-        'caching'
-    ]
 
-    if method in ['GET', 'DELETE'] and not is_performance_test:
+def _is_missing(value):
+    return value is None or (isinstance(value, str) and not value.strip())
 
-        if isinstance(payload, str):
 
-            if payload.startswith('/'):
-                current_endpoint = payload
-                payload = {}
+def _normalize_performance_configuration(performance_config):
+    """
+    Validate and normalize the Test Plan configuration.
 
-            elif payload.startswith('?') or '=' in payload:
-                payload = parse_query_params(payload)
+    No execution value is defaulted here. Users, spawn rate, duration, unit,
+    and caching choice must originate from the configuration sent by the UI.
+    """
 
-            else:
-                current_endpoint = (
-                    current_endpoint.rstrip('/')
-                    + '/'
-                    + payload
-                )
-                payload = {}
+    if not isinstance(performance_config, dict):
+        return None, "Performance configuration is required."
 
-    # ---------------------------------------------------------
-    # Existing Rate Limit handling
-    # ---------------------------------------------------------
+    performance_type = str(performance_config.get("type", "")).strip().lower()
 
-    if "429" in expected_codes:
-
-        requests_made = 0
-        latencies = []
-        got_429 = False
-        sample_output = "No output available"
-
-        ping_url = build_url(
-            current_endpoint,
-            base_url
+    if performance_type not in PERFORMANCE_TYPES:
+        return None, (
+            "Invalid performance configuration type. "
+            f"Expected one of: {', '.join(sorted(PERFORMANCE_TYPES))}."
         )
 
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
+    if performance_type == "caching":
+        value = performance_config.get("value")
 
-        for _ in range(6):
+        if _is_missing(value):
+            return None, "Caching configuration value is required."
 
-            start_time = time.time()
-
-            try:
-
-                if method in ["GET", "DELETE"]:
-
-                    ping_res = requests.request(
-                        method,
-                        ping_url,
-                        params=(
-                            payload
-                            if isinstance(payload, dict)
-                            else None
-                        ),
-                        headers=headers,
-                        timeout=5.0
-                    )
-
-                else:
-
-                    if isinstance(payload, dict) and payload:
-
-                        ping_res = requests.request(
-                            method,
-                            ping_url,
-                            json=payload,
-                            headers=headers,
-                            timeout=5.0
-                        )
-
-                    else:
-
-                        ping_res = requests.request(
-                            method,
-                            ping_url,
-                            data=payload,
-                            headers=headers,
-                            timeout=5.0
-                        )
-
-                requests_made += 1
-
-                latencies.append(
-                    (time.time() - start_time) * 1000
-                )
-
-                if ping_res.status_code == 429:
-
-                    got_429 = True
-                    sample_output = ping_res.text[:1500]
-                    break
-
-                sample_output = ping_res.text[:1500]
-
-            except Exception as exc:
-
-                sample_output = str(exc)
-
-        metrics = {
-            "requests_made": str(requests_made),
-            "failures": "0" if got_429 else "1",
-            "median_ms": (
-                str(round(sum(latencies) / len(latencies)))
-                if latencies else "0"
-            ),
-            "avg_ms": (
-                str(round(sum(latencies) / len(latencies)))
-                if latencies else "0"
-            ),
-            "max_ms": (
-                str(round(max(latencies)))
-                if latencies else "0"
-            ),
-            "rps": "N/A (Rate Limit Mode)"
-        }
-
-        failure_details = []
-
-        if not got_429:
-            failure_details.append(
-                "Rate limit of 5 requests per IP was NOT "
-                "enforced by the server. 6th request succeeded."
-            )
+        normalized_value = str(value).strip().lower()
+        if normalized_value not in {"yes", "no"}:
+            return None, "Caching configuration must be exactly Yes or No."
 
         return {
-            "success": True,
-            "metrics": metrics,
-            "sample_output": sample_output,
-            "failure_details": failure_details
-        }, 200
+            "type": "caching",
+            "value": "Yes" if normalized_value == "yes" else "No",
+        }, None
 
-    # ---------------------------------------------------------
-    # Existing sample request
-    # ---------------------------------------------------------
+    users_raw = performance_config.get("value")
+    spawn_rate_raw = performance_config.get("spawnRate")
+    if spawn_rate_raw is None:
+        spawn_rate_raw = performance_config.get("spawn")
+    duration_raw = performance_config.get("duration")
+    unit_raw = performance_config.get("unit")
 
-    safe_payload = json.dumps(payload)
-    sample_output = "No output available"
+    missing_fields = []
+
+    if _is_missing(users_raw):
+        missing_fields.append("Users")
+
+    if _is_missing(spawn_rate_raw):
+        missing_fields.append("Spawn Rate")
+
+    if _is_missing(duration_raw):
+        missing_fields.append("Duration")
+
+    if _is_missing(unit_raw):
+        missing_fields.append("Unit")
+
+    if missing_fields:
+        return None, (
+            "Performance configuration is incomplete. Missing: "
+            + ", ".join(missing_fields)
+            + "."
+        )
 
     try:
+        users = int(users_raw)
+    except (TypeError, ValueError):
+        return None, "Users must be a positive integer."
 
-        ping_url = build_url(
-            current_endpoint,
-            base_url
+    try:
+        spawn_rate = float(spawn_rate_raw)
+    except (TypeError, ValueError):
+        return None, "Spawn Rate must be a positive number."
+
+    try:
+        duration = float(duration_raw)
+    except (TypeError, ValueError):
+        return None, "Duration must be a positive number."
+
+    if users <= 0:
+        return None, "Users must be greater than 0."
+
+    if spawn_rate <= 0:
+        return None, "Spawn Rate must be greater than 0."
+
+    if duration <= 0:
+        return None, "Duration must be greater than 0."
+
+    unit = str(unit_raw).strip().lower()
+
+    if unit not in {"seconds", "minutes", "hours"}:
+        return None, "Unit must be seconds, minutes, or hours."
+
+    if duration.is_integer():
+        duration_text = str(int(duration))
+    else:
+        duration_text = str(duration)
+
+    unit_suffix = {
+        "seconds": "s",
+        "minutes": "m",
+        "hours": "h",
+    }[unit]
+
+    return {
+        "type": performance_type,
+        "users": users,
+        "spawn_rate": spawn_rate,
+        "duration": duration,
+        "duration_text": duration_text,
+        "unit": unit,
+        "run_time": f"{duration_text}{unit_suffix}",
+    }, None
+
+
+def _is_observational_performance_expectation(expected):
+    text = str(expected or "").strip().lower()
+
+    if not text:
+        return True
+
+    return any(keyword in text for keyword in OBSERVATIONAL_EXPECTATION_KEYWORDS)
+
+
+def _prepare_performance_payload(test_case):
+    """
+    Determine the actual request payload without treating the performance
+    scenario's descriptive input text as a request body.
+
+    A future caller can explicitly provide request_input/payload on the
+    testcase. Otherwise, JSON-like input is retained; plain descriptive
+    performance text becomes an empty request payload.
+    """
+
+    explicit_payload = test_case.get("request_input")
+    if explicit_payload is None:
+        explicit_payload = test_case.get("payload")
+
+    if explicit_payload is not None:
+        return explicit_payload
+
+    input_value = test_case.get("input", {})
+
+    if isinstance(input_value, (dict, list)) or input_value is None:
+        return input_value if input_value is not None else {}
+
+    if isinstance(input_value, str):
+        stripped = input_value.strip()
+
+        if not stripped:
+            return {}
+
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                return json.loads(stripped)
+            except (TypeError, ValueError):
+                pass
+
+        # Matrix performance test cases use input as human-readable
+        # configuration text. It must never be sent as the API request body.
+        return {}
+
+    return input_value
+
+
+def _build_status_policy(performance_type, expected):
+    """
+    Select response classification without using performance configuration
+    text to choose the execution mode.
+    """
+
+    if performance_type == "rate_limit":
+        return "rate_limit"
+
+    if _is_observational_performance_expectation(expected):
+        return "default"
+
+    return "explicit"
+
+
+def _read_status_metrics(status_metrics_file):
+    default = {
+        "2xx": 0,
+        "3xx": 0,
+        "4xx": 0,
+        "5xx": 0,
+        "429": 0,
+    }
+
+    if not status_metrics_file or not os.path.exists(status_metrics_file):
+        return default
+
+    try:
+        with open(status_metrics_file, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        for key in default:
+            try:
+                default[key] = int(data.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                default[key] = 0
+
+        return default
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+def _read_locust_failure_details(csv_file_failures):
+    failure_details = []
+
+    if not os.path.exists(csv_file_failures):
+        return failure_details
+
+    try:
+        with open(
+            csv_file_failures,
+            mode="r",
+            encoding="utf-8"
+        ) as file:
+            reader = csv.DictReader(file)
+
+            for row in reader:
+                err_msg = row.get("Error", "")
+                occ = row.get("Occurrences", "")
+
+                if err_msg:
+                    failure_details.append(
+                        f"{err_msg} (Occurred {occ} times)"
+                    )
+    except OSError as exc:
+        failure_details.append(
+            f"Failed to read Locust failure report: {str(exc)}"
         )
 
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
+    return failure_details
 
-        if method in ["GET", "DELETE"]:
 
-            ping_res = requests.request(
-                method,
-                ping_url,
-                params=(
-                    payload
-                    if isinstance(payload, dict)
-                    else None
-                ),
-                headers=headers,
-                timeout=5.0
-            )
+def _read_locust_metrics(csv_file_stats):
+    if not os.path.exists(csv_file_stats):
+        return {}
 
-        else:
+    with open(
+        csv_file_stats,
+        mode="r",
+        encoding="utf-8"
+    ) as file:
+        reader = csv.DictReader(file)
 
-            if isinstance(payload, dict) and payload:
+        for row in reader:
+            if row.get("Name") == "Aggregated":
+                return _build_locust_metrics(row)
 
-                ping_res = requests.request(
-                    method,
-                    ping_url,
-                    json=payload,
-                    headers=headers,
-                    timeout=5.0
-                )
+        file.seek(0)
+        reader = csv.DictReader(file)
 
-            else:
+        for row in reader:
+            return _build_locust_metrics(row)
 
-                ping_res = requests.request(
-                    method,
-                    ping_url,
-                    data=payload,
-                    headers=headers,
-                    timeout=5.0
-                )
+    return {}
 
-        sample_output = ping_res.text[:1500]
 
-    except Exception as exc:
+def _cleanup_performance_files(locust_file, csv_prefix, status_metrics_file):
+    for filename in [
+        locust_file,
+        status_metrics_file,
+        f"{csv_prefix}_stats.csv",
+        f"{csv_prefix}_stats_history.csv",
+        f"{csv_prefix}_failures.csv",
+        f"{csv_prefix}_exceptions.csv",
+    ]:
+        if not filename:
+            continue
 
-        sample_output = (
-            f"Failed to fetch sample: {str(exc)}"
-        )
+        try:
+            os.remove(filename)
+        except OSError:
+            pass
 
-    # ---------------------------------------------------------
-    # Performance configuration
-    # ---------------------------------------------------------
 
-    performance_config = (
-        data.get('performanceConfig')
-        or {}
+def run_performance_test(data):
+    """
+    Execute a performance testcase using only the supplied Test Plan
+    performance configuration.
+
+    Configuration contract:
+      - caching: value (Yes/No)
+      - load_factor/stress_factor/endurance/rate_limit:
+        value, spawnRate/spawn, duration, unit
+
+    The runner never reads the descriptive matrix input to derive users,
+    spawn rate, duration, or execution type.
+    """
+
+    data = data if isinstance(data, dict) else {}
+
+    test_case = data.get("testCase")
+    if not isinstance(test_case, dict):
+        test_case = {}
+
+    normalized_config, config_error = _normalize_performance_configuration(
+        data.get("performanceConfig")
     )
 
-    performance_type = (
-    performance_config.get('type')
+    if config_error:
+        return {
+            "success": False,
+            "error": config_error,
+        }, 400
+
+    performance_type = normalized_config["type"]
+
+    base_url = (
+        test_case.get("baseUrl")
+        or test_case.get("base_url")
+        or data.get("baseUrl")
+        or data.get("base_url")
+        or ""
     )
 
-    if performance_type == 'caching':
+    base_url = str(base_url).strip()
 
-        caching_enabled = str(
-            performance_config.get('value', 'No')
-        ).strip().lower()
+    if not base_url or base_url.lower() in {"mock", "custom", "n/a", "no-base-url"}:
+        return {
+            "success": False,
+            "error": "Performance testing requires a real Base URL, not a mock/custom environment.",
+        }, 400
 
-        if caching_enabled != 'yes':
+    method = str(
+        test_case.get("method")
+        or data.get("method")
+        or "GET"
+    ).strip().upper()
 
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        return {
+            "success": False,
+            "error": f"Unsupported HTTP method for performance execution: {method}",
+        }, 400
+
+    expected = test_case.get("expected", "N/A")
+    if expected == "N/A" or not expected:
+        expected = test_case.get("expected_status", "N/A")
+
+    current_endpoint = (
+        test_case.get("endpoint")
+        or data.get("endpoint")
+        or "/"
+    )
+
+    path_parameter_values = test_case.get("path_parameter_values") or {}
+    current_endpoint = replace_path_parameters(
+        current_endpoint,
+        path_parameter_values
+    )
+
+    unresolved = _find_unresolved_path_parameters(current_endpoint)
+    if unresolved:
+        return {
+            "success": False,
+            "error": (
+                "Performance execution cannot start because the endpoint "
+                "contains unresolved path parameter(s): "
+                + ", ".join(unresolved)
+            ),
+        }, 400
+
+    payload = _prepare_performance_payload(test_case)
+
+    if performance_type == "caching":
+        caching_enabled = normalized_config["value"].strip().lower()
+
+        if caching_enabled != "yes":
             return {
                 "success": True,
                 "metrics": {
@@ -530,198 +707,53 @@ def run_performance_test(data):
                     "median_ms": "0",
                     "avg_ms": "0",
                     "max_ms": "0",
-                    "rps": "0"
+                    "rps": "0",
                 },
                 "sample_output": (
                     "Caching test skipped because "
                     "Caching configuration is set to No."
                 ),
-                "failure_details": []
+                "failure_details": [],
+                "configuration": normalized_config,
             }, 200
 
-        return run_etag_caching_test(
+        result, status_code = run_etag_caching_test(
             base_url=base_url,
             endpoint=current_endpoint,
             method=method,
-            payload=payload
-        )
-
-        # ---------------------------------------------------------
-    # Load Factor
-    # ---------------------------------------------------------
-
-    if performance_type == 'load_factor':
-
-        locust_script = build_load_factor_script(
-            base_url=base_url,
-            endpoint=current_endpoint,
-            method=method,
-            headers={
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
             payload=payload,
-            expected_codes=expected_codes
         )
 
-    users = performance_config.get('value')
-    spawn_rate = performance_config.get('spawnRate')
-    run_time = performance_config.get('runTime')
+        if isinstance(result, dict):
+            result["configuration"] = normalized_config
 
-    if (
-        users is None
-        or spawn_rate is None
-        or run_time is None
-    ):
+        return result, status_code
 
-        return {
-            "success": False,
-            "error": (
-                "Performance configuration is missing "
-                f"for scenario: "
-                f"{test_case.get('scenario', 'Unknown')}"
-            )
-        }, 400
-
-    try:
-
-        users = int(users)
-        spawn_rate = float(spawn_rate)
-
-    except (TypeError, ValueError):
-
-        return {
-            "success": False,
-            "error": (
-                "Invalid performance configuration. "
-                "Users and spawn rate must be numeric."
-            )
-        }, 400
-
-    if users <= 0:
-
-        return {
-            "success": False,
-            "error": "Users must be greater than 0."
-        }, 400
-
-    if spawn_rate <= 0:
-
-        return {
-            "success": False,
-            "error": "Spawn rate must be greater than 0."
-        }, 400
-
-    if not str(run_time).strip():
-
-        return {
-            "success": False,
-            "error": "Run time cannot be empty."
-        }, 400
-
-    # ---------------------------------------------------------
-    # Existing dynamic Locust script
-    # ---------------------------------------------------------
-
-    if performance_type == 'load_factor':
-
-        locust_script = build_load_factor_script(
-            base_url=base_url,
-            endpoint=current_endpoint,
-            method=method,
-            headers={
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            payload=payload,
-            expected_codes=expected_codes
-        )
-
-    else:
-
-        # Existing implementation for other performance types
-        locust_script = f"""from locust import HttpUser, task, between
-import json
-
-class APIUser(HttpUser):
-
-    wait_time = between(0.01, 0.05)
-
-    host = "{base_url}"
-
-    @task
-    def execute_dynamic_request(self):
-
-        headers = {{
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }}
-
-        payload_raw = {safe_payload}
-
-        try:
-            payload_data = json.loads(payload_raw)
-        except:
-            payload_data = payload_raw
-
-        kwargs = {{
-            "headers": headers,
-            "catch_response": True,
-            "timeout": 15.0
-        }}
-
-        if "{method}" in ["GET", "DELETE"]:
-
-            if isinstance(payload_data, dict) and payload_data:
-                kwargs["params"] = payload_data
-
-        else:
-
-            if isinstance(payload_data, dict) and payload_data:
-                kwargs["json"] = payload_data
-
-            elif payload_data:
-                kwargs["data"] = payload_data
-
-        with self.client.request(
-            "{method}",
-            "{current_endpoint}",
-            **kwargs
-        ) as response:
-
-            expected_codes = "{expected}"
-
-            if "401" in expected_codes or "403" in expected_codes:
-
-                if response.status_code in [401, 403]:
-                    response.success()
-                else:
-                    response.failure(
-                        f"Expected Auth Failure, got {{response.status_code}}"
-                    )
-
-            elif response.status_code in [
-                200, 201, 202, 204, 304
-            ]:
-
-                response.success()
-
-            else:
-
-                response.failure(
-                    f"Failed with HTTP {{response.status_code}}: "
-                    f"{{response.text[:100]}}"
-                )
-"""
+    expected_codes = extract_response_code(expected)
+    status_policy = _build_status_policy(performance_type, expected)
+    builder_expected_codes = expected_codes if status_policy == "explicit" else []
 
     timestamp = int(time.time() * 1000)
-
-    csv_prefix = (
-        f"perf_results_{timestamp}"
+    csv_prefix = f"perf_results_{timestamp}"
+    locust_file = f"dynamic_locustfile_{timestamp}.py"
+    status_metrics_file = os.path.abspath(
+        f"{csv_prefix}_status_codes.json"
     )
 
-    locust_file = (
-        f"dynamic_locustfile_{timestamp}.py"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    locust_script = build_load_factor_script(
+        base_url=base_url,
+        endpoint=current_endpoint,
+        method=method,
+        headers=headers,
+        payload=payload,
+        expected_codes=builder_expected_codes,
+        status_policy=status_policy,
+        status_metrics_file=status_metrics_file,
     )
 
     with open(
@@ -729,11 +761,14 @@ class APIUser(HttpUser):
         "w",
         encoding="utf-8"
     ) as file:
-
         file.write(locust_script)
 
+    users = normalized_config["users"]
+    spawn_rate = normalized_config["spawn_rate"]
+    run_time = normalized_config["run_time"]
+
     print(
-        f"\n🚀 Starting Locust Load Test on "
+        "\n🚀 Starting Locust Performance Test on "
         f"{base_url}{current_endpoint} [{method}]..."
     )
     print("\n" + "=" * 70)
@@ -743,12 +778,17 @@ class APIUser(HttpUser):
     print("Endpoint :", current_endpoint)
     print("Full URL :", build_url(current_endpoint, base_url))
     print("Method   :", method)
-    print("Expected :", expected)
+    print("Perf Type:", performance_type)
     print("Users    :", users)
     print("Spawn    :", spawn_rate)
+    print("Duration :", normalized_config["duration"], normalized_config["unit"])
     print("Run Time :", run_time)
+    print("Status   :", status_policy)
     print("=" * 70)
+
     command = [
+        sys.executable,
+        "-m",
         "locust",
         "-f",
         locust_file,
@@ -758,130 +798,99 @@ class APIUser(HttpUser):
         "-r",
         str(spawn_rate),
         "--run-time",
-        str(run_time),
+        run_time,
         "--csv",
-        csv_prefix
+        csv_prefix,
     ]
 
-    process = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace"
-    )
+    try:
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
 
-    print("\n--- LOCUST STDOUT ---")
-    print(process.stdout)
+        print("\n--- LOCUST STDOUT ---")
+        print(process.stdout)
 
-    print("\n--- LOCUST STDERR ---")
-    print(process.stderr)
+        print("\n--- LOCUST STDERR ---")
+        print(process.stderr)
 
-    print(
-        "LOCUST EXIT CODE:",
-        process.returncode
-    )
+        print("LOCUST EXIT CODE:", process.returncode)
 
-    metrics = {}
-    failure_details = []
+        csv_file_stats = f"{csv_prefix}_stats.csv"
+        csv_file_failures = f"{csv_prefix}_failures.csv"
 
-    csv_file_stats = (
-        f"{csv_prefix}_stats.csv"
-    )
+        failure_details = _read_locust_failure_details(csv_file_failures)
+        metrics = _read_locust_metrics(csv_file_stats)
+        status_counts = _read_status_metrics(status_metrics_file)
 
-    csv_file_failures = (
-        f"{csv_prefix}_failures.csv"
-    )
+        if not metrics:
+            stdout_tail = (process.stdout or "").strip()[-2000:]
+            stderr_tail = (process.stderr or "").strip()[-2000:]
 
-    if os.path.exists(csv_file_failures):
+            detail_parts = [
+                "Locust failed to generate CSV results."
+            ]
 
-        with open(
-            csv_file_failures,
-            mode='r',
-            encoding='utf-8'
-        ) as file:
-
-            reader = csv.DictReader(file)
-
-            for row in reader:
-
-                err_msg = row.get(
-                    'Error',
-                    ''
+            if process.returncode:
+                detail_parts.append(
+                    f"Locust exit code: {process.returncode}."
                 )
 
-                occ = row.get(
-                    'Occurrences',
-                    ''
+            if stderr_tail:
+                detail_parts.append(
+                    f"STDERR: {stderr_tail}"
+                )
+            elif stdout_tail:
+                detail_parts.append(
+                    f"STDOUT: {stdout_tail}"
                 )
 
-                if err_msg:
+            return {
+                "success": False,
+                "error": " ".join(detail_parts),
+            }, 500
 
-                    failure_details.append(
-                        f"{err_msg} "
-                        f"(Occurred {occ} times)"
-                    )
-
-    if os.path.exists(csv_file_stats):
-
-        time.sleep(0.5)
-
-        with open(
-            csv_file_stats,
-            mode='r',
-            encoding='utf-8'
-        ) as file:
-
-            reader = csv.DictReader(file)
-
-            for row in reader:
-
-                if row.get('Name') == 'Aggregated':
-
-                    metrics = _build_locust_metrics(row)
-
-                    break
-
-            if not metrics:
-
-                file.seek(0)
-
-                reader = csv.DictReader(file)
-
-                for row in reader:
-
-                    metrics = _build_locust_metrics(row)
-
-                    break
-
-        # Cleanup generated Locust/CSV files
-        for ext in [
-            '_stats.csv',
-            '_stats_history.csv',
-            '_failures.csv',
-            '_exceptions.csv'
-        ]:
-
-            try:
-                os.remove(
-                    f"{csv_prefix}{ext}"
-                )
-            except OSError:
-                pass
-
-        try:
-            os.remove(locust_file)
-        except OSError:
-            pass
+        metrics.update({
+            "status_2xx": status_counts["2xx"],
+            "status_3xx": status_counts["3xx"],
+            "status_4xx": status_counts["4xx"],
+            "status_5xx": status_counts["5xx"],
+            "status_429": status_counts["429"],
+        })
 
         return {
             "success": True,
             "metrics": metrics,
-            "sample_output": sample_output,
-            "failure_details": failure_details
+            "sample_output": (
+                "Performance execution completed by Locust using the "
+                "configured users, spawn rate, and duration."
+            ),
+            "failure_details": failure_details,
+            "configuration": normalized_config,
         }, 200
 
-    return {
-        "success": False,
-        "error": "Locust failed to generate CSV results."
-    }, 500
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "error": (
+                "Locust is not available on the server PATH. "
+                "Install the configured Locust dependency and try again."
+            ),
+        }, 500
+
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Performance execution failed: {str(exc)}",
+        }, 500
+
+    finally:
+        _cleanup_performance_files(
+            locust_file,
+            csv_prefix,
+            status_metrics_file,
+        )
