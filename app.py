@@ -523,9 +523,20 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
             "Expected Response Code",
             "Expected Status",
             "Status",
+            "Performance Type",
+            "Performance Value / Users",
+            "Spawn Rate",
+            "Duration",
+            "Duration Unit",
+            "Caching",
         ]
     else:
-        headers = ["ID", "HTTP Method", "Test Case Name", "Test Type", "Endpoint", "Request Body", "Expected Response Code", "Expected Status", "Status"]
+        headers = [
+            "ID", "HTTP Method", "Test Case Name", "Test Type", "Endpoint",
+            "Request Body", "Expected Response Code", "Expected Status", "Status",
+            "Performance Type", "Performance Value / Users", "Spawn Rate",
+            "Duration", "Duration Unit", "Caching",
+        ]
 
     ws.append(headers)
     for cell in ws[1]:
@@ -551,9 +562,23 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
                 response_code_str,
                 tc.get("expected"),
                 "",
+                (tc.get("perf_config") or {}).get("type", ""),
+                (tc.get("perf_config") or {}).get("value", ""),
+                (tc.get("perf_config") or {}).get("spawn", ""),
+                (tc.get("perf_config") or {}).get("duration", ""),
+                (tc.get("perf_config") or {}).get("unit", ""),
+                (tc.get("perf_config") or {}).get("value", "") if (tc.get("perf_config") or {}).get("type") == "caching" else "",
             ]
         else:
-            row_data = [tc.get("id"), method, tc.get("scenario"), tc.get("type"), endpoint, request_body, response_code_str, tc.get("expected"), ""]
+            perf_config = tc.get("perf_config") or {}
+            row_data = [
+                tc.get("id"), method, tc.get("scenario"), tc.get("type"), endpoint,
+                request_body, response_code_str, tc.get("expected"), "",
+                perf_config.get("type", ""), perf_config.get("value", ""),
+                perf_config.get("spawn", ""), perf_config.get("duration", ""),
+                perf_config.get("unit", ""),
+                perf_config.get("value", "") if perf_config.get("type") == "caching" else "",
+            ]
         ws.append(row_data)
 
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
@@ -563,7 +588,10 @@ def _build_test_case_excel(test_cases, method, endpoint, base_url="", include_ba
 
     col_widths = {"A": 12, "B": 12, "C": 35, "D": 12}
     if include_base_url:
-        col_widths.update({"E": 25, "F": 20, "G": 50, "H": 16, "I": 30, "J": 10})
+        col_widths.update({
+            "E": 25, "F": 20, "G": 50, "H": 16, "I": 30, "J": 10,
+            "K": 18, "L": 22, "M": 14, "N": 12, "O": 14, "P": 12,
+        })
     else:
         col_widths.update({"E": 20, "F": 50, "G": 16, "H": 30, "I": 10})
 
