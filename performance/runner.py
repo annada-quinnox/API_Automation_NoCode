@@ -722,6 +722,12 @@ def run_performance_test(data):
             endpoint=current_endpoint,
             method=method,
             payload=payload,
+            scenario_id=(
+                data.get("scenarioId")
+                or test_case.get("id")
+                or test_case.get("test_case_id")
+                or test_case.get("test_case_number")
+            ),
         )
 
         if isinstance(result, dict):
