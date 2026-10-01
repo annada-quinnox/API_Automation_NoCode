@@ -381,6 +381,33 @@
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
         }
 
+
+        /* Performance configuration unit dropdown: match the numeric input boxes. */
+        .performance-config-input.perf-unit {
+            border: 1px solid var(--border);
+            padding: 12px 18px;
+            border-radius: 24px;
+            font-size: 0.95rem;
+            width: 100%;
+            min-height: 46px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+            background-color: white;
+            color: var(--dark);
+            cursor: pointer;
+        }
+
+        .performance-config-input.perf-unit:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 4px 10px rgba(79, 70, 229, 0.05);
+        }
+
+        .performance-config-input.perf-unit:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        }
+
         /* Custom Select Styles */
         .custom-select {
             position: relative;
@@ -1291,14 +1318,14 @@
    Backend and JavaScript logic are intentionally preserved.
    ========================================================= */
 
-        
+    /*    
         #performance-config-section,
         #performanceConfigModal,
         #performanceScenariosCard,
         #performanceCard {
             display: none !important;
         }
-    
+    */
     </style>
 </head>
 
@@ -2155,14 +2182,17 @@
                     <div class="card-title" style="justify-content: space-between">
                         <div style="display: flex; align-items: center; gap: 8px; color: #8b5cf6"><i
                                 data-lucide="zap"></i> Performance Scenarios</div>
-                        <div style="display: flex; gap: 16px; align-items: center">
+                        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: flex-end">
+                            <div id="performanceEstimatedTotal" title="Approximate time based on the configured run duration; caching estimates use the current request timeout." style="padding: 8px 12px; border-radius: 999px; background: #f8fafc; border: 1px solid var(--border); color: var(--gray); font-size: 0.8rem; white-space: nowrap;">
+                                Estimated total: <strong>--</strong>
+                            </div>
                             <label class="select-all-pill">
                                 <input type="checkbox" id="selectAllPerfCheckbox" checked />
                                 <span>Select All</span>
                             </label>
                             <button class="btn" id="runPerfBtn" onclick="executePerformanceTest()"
                                 style="background: #f5f3ff; color: #8b5cf6; border: 1px solid #ddd6fe; padding: 8px 16px; font-size: 0.85rem">
-                                <i data-lucide="zap"></i> Execute Load Tests
+                                <i data-lucide="zap"></i> Execute Performance Tests
                             </button>
                         </div>
                     </div>
@@ -2770,6 +2800,198 @@
         }
 
         let performanceScenarioConfigs = {};
+
+        // ---------------------------------------------------------
+        // Performance execution time estimate (UI only)
+        // Does not alter the execution/request behavior.
+        // ---------------------------------------------------------
+        let performanceEstimateTimer = null;
+        let performanceEstimateState = null;
+
+        function formatPerformanceEstimate(seconds) {
+            const safeSeconds = Math.max(0, Math.ceil(Number(seconds) || 0));
+
+            if (safeSeconds < 60) return `${safeSeconds}s`;
+
+            const hours = Math.floor(safeSeconds / 3600);
+            const minutes = Math.floor((safeSeconds % 3600) / 60);
+            const secs = safeSeconds % 60;
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m${secs ? ` ${secs}s` : ""}`;
+            }
+
+            return `${minutes}m${secs ? ` ${secs}s` : ""}`;
+        }
+
+        function getPerformanceExecutionEstimateSeconds(testCase, config) {
+            if (!config) return 0;
+
+            const id = String(
+                testCase?.id ||
+                testCase?.test_case_id ||
+                testCase?.test_case_number ||
+                ""
+            ).toUpperCase();
+            const scenario = String(testCase?.scenario || "").toLowerCase();
+
+            // Caching currently uses direct HTTP requests instead of Locust.
+            // The backend request timeout is 10 seconds per request.
+            if (config.type === "caching") {
+                const conditional =
+                    id.includes("PERF_CONDITIONAL_GET_12") ||
+                    id === "GET_CACHE_02" ||
+                    scenario.includes("conditional get") ||
+                    scenario.includes("if-none-match");
+                return conditional ? 20 : 10;
+            }
+
+            const duration = Number(config.duration);
+            if (!Number.isFinite(duration) || duration <= 0) return 0;
+
+            const unit = String(config.unit || "seconds").toLowerCase();
+            if (unit === "hours") return duration * 3600;
+            if (unit === "minutes") return duration * 60;
+            return duration;
+        }
+
+        function getSelectedPerformanceCases() {
+            return Array.from(
+                document.querySelectorAll(
+                    "#performanceTestCasesList .test-case-checkbox:checked"
+                )
+            )
+                .map((cb) => {
+                    const index = Number(cb.dataset.index);
+                    return Number.isInteger(index) && index >= 0 && index < activeSuiteCases.length
+                        ? activeSuiteCases[index]
+                        : null;
+                })
+                .filter(Boolean);
+        }
+
+        function updatePerformanceEstimateHeader() {
+            const el = document.getElementById("performanceEstimatedTotal");
+            if (!el) return;
+
+            if (performanceEstimateState?.running) {
+                const elapsed = (Date.now() - performanceEstimateState.startedAt) / 1000;
+                const remaining = Math.max(0, performanceEstimateState.totalEstimatedSeconds - elapsed);
+                el.innerHTML = remaining > 0
+                    ? `Estimated remaining: <strong>≈ ${formatPerformanceEstimate(remaining)}</strong>`
+                    : `Estimated remaining: <strong>Finishing...</strong>`;
+                return;
+            }
+
+            const selectedCases = getSelectedPerformanceCases();
+            const totalSeconds = selectedCases.reduce((sum, testCase) => {
+                return sum + getPerformanceExecutionEstimateSeconds(
+                    testCase,
+                    getPerformanceConfigForScenario(testCase)
+                );
+            }, 0);
+
+            el.innerHTML = totalSeconds > 0
+                ? `Estimated total: <strong>≈ ${formatPerformanceEstimate(totalSeconds)}</strong>`
+                : `Estimated total: <strong>--</strong>`;
+        }
+
+        function updatePerformanceCaseEstimate(testCase, index, state = "estimated", elapsedSeconds = 0) {
+            const el = document.querySelector(
+                `.performance-case-estimate[data-performance-estimate-index="${index}"]`
+            );
+            if (!el) return;
+
+            const estimateSeconds = getPerformanceExecutionEstimateSeconds(
+                testCase,
+                getPerformanceConfigForScenario(testCase)
+            );
+
+            if (state === "running") {
+                const remaining = Math.max(0, estimateSeconds - elapsedSeconds);
+                el.innerHTML = remaining > 0
+                    ? `Running • <strong>≈ ${formatPerformanceEstimate(remaining)} remaining</strong>`
+                    : `Running • <strong>finishing...</strong>`;
+            } else if (state === "completed") {
+                el.innerHTML = `Completed in <strong>${formatPerformanceEstimate(elapsedSeconds)}</strong> • Estimated: ≈ ${formatPerformanceEstimate(estimateSeconds)}`;
+            } else if (state === "error") {
+                el.innerHTML = `Execution ended with error • Estimated: ≈ ${formatPerformanceEstimate(estimateSeconds)}`;
+            } else if (estimateSeconds > 0) {
+                el.innerHTML = `Estimated execution: <strong>≈ ${formatPerformanceEstimate(estimateSeconds)}</strong>`;
+            } else {
+                el.innerHTML = `Estimated execution: <strong>--</strong>`;
+            }
+        }
+
+        function startPerformanceEstimateTimer(selectedCases) {
+            stopPerformanceEstimateTimer();
+
+            const totalEstimatedSeconds = selectedCases.reduce((sum, testCase) => {
+                return sum + getPerformanceExecutionEstimateSeconds(
+                    testCase,
+                    getPerformanceConfigForScenario(testCase)
+                );
+            }, 0);
+
+            performanceEstimateState = {
+                running: true,
+                startedAt: Date.now(),
+                totalEstimatedSeconds,
+                currentIndex: null,
+                currentCaseStartedAt: null,
+            };
+
+            updatePerformanceEstimateHeader();
+
+            performanceEstimateTimer = window.setInterval(() => {
+                updatePerformanceEstimateHeader();
+
+                const currentIndex = performanceEstimateState?.currentIndex;
+                if (currentIndex !== null && currentIndex !== undefined) {
+                    const currentCase = selectedCases[currentIndex];
+                    if (currentCase) {
+                        const elapsed = (Date.now() - performanceEstimateState.currentCaseStartedAt) / 1000;
+                        const activeIndex = activeSuiteCases.indexOf(currentCase);
+                        updatePerformanceCaseEstimate(currentCase, activeIndex, "running", elapsed);
+                    }
+                }
+            }, 1000);
+        }
+
+        function setCurrentPerformanceEstimateCase(testCase, selectedPosition) {
+            if (!performanceEstimateState) return;
+
+            performanceEstimateState.currentIndex = selectedPosition;
+            performanceEstimateState.currentCaseStartedAt = Date.now();
+
+            const activeIndex = activeSuiteCases.indexOf(testCase);
+            updatePerformanceCaseEstimate(testCase, activeIndex, "running", 0);
+        }
+
+        function completeCurrentPerformanceEstimateCase(testCase, elapsedSeconds, state = "completed") {
+            const activeIndex = activeSuiteCases.indexOf(testCase);
+            updatePerformanceCaseEstimate(testCase, activeIndex, state, elapsedSeconds);
+
+            if (performanceEstimateState) {
+                performanceEstimateState.currentIndex = null;
+                performanceEstimateState.currentCaseStartedAt = null;
+            }
+
+            updatePerformanceEstimateHeader();
+        }
+
+        function stopPerformanceEstimateTimer() {
+            if (performanceEstimateTimer) {
+                clearInterval(performanceEstimateTimer);
+                performanceEstimateTimer = null;
+            }
+
+            if (performanceEstimateState) {
+                performanceEstimateState.running = false;
+            }
+
+            updatePerformanceEstimateHeader();
+        }
         let perfConfigs = {};
         // =========================================================
         // PERFORMANCE CONFIGURATION MODAL
@@ -3192,7 +3414,7 @@
                                     color: var(--dark);
                                     word-break: break-word;
                                 ">
-                                    ${escapeHtml(formatPerformanceScenarioValue(scenario.expected))}
+                                    ${escapeHtml(getPerformanceExpectedSummary(scenario))}
                                 </div>
 
                             </div>
@@ -3412,7 +3634,7 @@
                             color: var(--gray);
                             margin-bottom: 5px;
                         ">
-                            Requests
+                            Users
                         </label>
 
                         <input
@@ -3420,7 +3642,7 @@
                             min="1"
                             class="performance-config-input perf-requests"
                             data-config-field="value"
-                            placeholder="Number of requests"
+                            placeholder="Number of Users"
                         >
 
                     </div>
@@ -3929,12 +4151,18 @@
                 else if (savedConfig.type === "rate_limit") {
                     const valueInput = fields.querySelector('[data-config-field="value"]');
 
+                    const spawnInput = fields.querySelector('[data-config-field="spawn"]');
+
                     const durationInput = fields.querySelector('[data-config-field="duration"]');
 
                     const unitInput = fields.querySelector('[data-config-field="unit"]');
 
                     if (valueInput) {
                         valueInput.value = savedConfig.value ?? "";
+                    }
+
+                    if (spawnInput) {
+                        spawnInput.value = savedConfig.spawn ?? "";
                     }
 
                     if (durationInput) {
@@ -4029,6 +4257,159 @@
             }
 
             return String(value);
+        }
+
+        function getPerformanceExpectedSummary(scenario) {
+            const id = String(scenario?.id || "").toUpperCase();
+            const expected = String(scenario?.expected || "").trim();
+
+            if (id.includes("PERF_BASELINE_01")) {
+                return "HTTP: 2xx / 4xx / 5xx / 429 observed • Metrics: P50, P95, P99, RPS, Error %";
+            }
+
+            if (id.includes("PERF_EXPECTED_LOAD_02") || id.includes("PERF_PEAK_03")) {
+                return "HTTP: No unexpected 5xx • Metrics: P95, throughput, response time";
+            }
+
+            if (id.includes("PERF_STRESS_04") || id.includes("PERF_SPIKE_05")) {
+                return "HTTP: 429 / 5xx observed • Metrics: users, RPS, P50, P95, P99, error rate";
+            }
+
+            if (id.includes("PERF_SOAK_06")) {
+                return "HTTP: 429 / 5xx observed • Metrics: response-time trend, throughput, error rate";
+            }
+
+            if (id.includes("PERF_VOLUME_07")) {
+                return "HTTP: Not explicitly specified • Metrics: latency, throughput, error rate";
+            }
+
+            if (id.includes("PERF_RATE_LIMIT_08")) {
+                return "HTTP: 2xx below threshold • 429 above threshold • Metrics: request rate";
+            }
+
+            if (id.includes("PERF_RECOVERY_09")) {
+                return "HTTP: Not explicitly specified • Metrics: response time, throughput, error rate";
+            }
+
+            if (id.includes("PERF_CONCURRENCY_10")) {
+                return "HTTP: Not explicitly specified • Metrics: concurrency behavior, failures, response time";
+            }
+
+            if (id.includes("PERF_CACHE_HEADERS_11") || id === "GET_CACHE_01") {
+                return "HTTP: 200 OK • Headers: ETag / Cache-Control";
+            }
+
+            if (id.includes("PERF_CONDITIONAL_GET_12") || id === "GET_CACHE_02") {
+                return "HTTP: 304 Not Modified • Header: If-None-Match";
+            }
+
+            const codes = expected.match(/\b[1-5]\d{2}\b/g) || [];
+            const uniqueCodes = [...new Set(codes)];
+
+            if (uniqueCodes.length > 0) {
+                return `HTTP: ${uniqueCodes.join(" / ")} • ${expected.replace(/\b[1-5]\d{2}\b/g, "").replace(/\s{2,}/g, " ").trim() || "See scenario expectation"}`;
+            }
+
+            return expected || "See scenario expectation";
+        }
+
+        function getRequiredPerformancePercentiles(testCase) {
+            const expected = String(testCase?.expected || "").toUpperCase();
+
+            const required = [];
+            ["P50", "P95", "P99"].forEach((percentile) => {
+                if (expected.includes(percentile)) {
+                    required.push(percentile);
+                }
+            });
+
+            return {
+                required,
+                showPercentiles: required.length > 0,
+            };
+        }
+
+        function getPerformanceExecutionSummary(testCase, metrics) {
+            const id = String(testCase?.id || "").toUpperCase();
+            const req = Number(metrics?.requests_made || 0);
+            const fail = Number(metrics?.failures || 0);
+            const p50 = metrics?.p50_ms;
+            const p95 = metrics?.p95_ms;
+            const p99 = metrics?.p99_ms;
+            const rps = metrics?.rps ?? "N/A";
+            const status429 = Number(metrics?.status_429 || 0);
+            const status5xx = Number(metrics?.status_5xx || 0);
+
+            const fmt = (v) => {
+                if (v === undefined || v === null || v === "" || String(v).toUpperCase() === "N/A") return "N/A";
+                const n = Number(v);
+                return Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(2)) : String(v);
+            };
+
+            if (id.includes("PERF_BASELINE_01")) {
+                return `Expected metrics: P50/P95/P99, RPS, Error %, 2xx/4xx/5xx/429 distribution\nObserved: P50=${fmt(p50)} ms | P95=${fmt(p95)} ms | P99=${fmt(p99)} ms | RPS=${rps} | 5xx=${status5xx} | 429=${status429}`;
+            }
+            if (id.includes("PERF_EXPECTED_LOAD_02") || id.includes("PERF_PEAK_03")) {
+                return `Expected metrics: P95 within SLA, stable throughput and response time, no unexpected 5xx\nObserved: P95=${fmt(p95)} ms | RPS=${rps} | 5xx=${status5xx} | failures=${fail}/${req}`;
+            }
+            if (id.includes("PERF_STRESS_04") || id.includes("PERF_SPIKE_05")) {
+                return `Expected metrics: users/RPS, P50/P95/P99, error rate, 429/5xx\nObserved: P50=${fmt(p50)} ms | P95=${fmt(p95)} ms | P99=${fmt(p99)} ms | RPS=${rps} | 429=${status429} | 5xx=${status5xx}`;
+            }
+            if (id.includes("PERF_SOAK_06")) {
+                return `Expected metrics: response-time trend, throughput, 429/5xx, degradation/resource-growth indicators\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | 429=${status429} | 5xx=${status5xx}`;
+            }
+            if (id.includes("PERF_VOLUME_07")) {
+                return `Expected metrics: latency, throughput and error rate\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | failures=${fail}/${req}`;
+            }
+            if (id.includes("PERF_RATE_LIMIT_08")) {
+                return `Expected HTTP: 2xx below threshold / 429 above threshold\nObserved: RPS=${rps} | 429=${status429} | 4xx=${metrics?.status_4xx ?? "N/A"} | 5xx=${status5xx}`;
+            }
+            if (id.includes("PERF_RECOVERY_09")) {
+                return `Expected metrics: response time, throughput, error rate returning toward normal\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | failures=${fail}/${req}`;
+            }
+            if (id.includes("PERF_CONCURRENCY_10")) {
+                return `Expected metrics: high simultaneous-request handling without unexpected failures/deadlocks\nObserved: Requests=${req} | failures=${fail} | Avg=${fmt(metrics?.avg_ms)} ms | RPS=${rps}`;
+            }
+
+            return `Observed: Requests=${req} | failures=${fail} | Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps}`;
+        }
+
+        function getPerformancePassFailReason(testCase, metrics, isPass, failureDetails) {
+            const reasons = [];
+            const failCount = Number(metrics?.failures || 0);
+            const percentileRequirement = getRequiredPerformancePercentiles(testCase);
+
+            if (isPass) {
+                reasons.push("Passed: no request failures were reported and the applicable performance checks passed.");
+            } else {
+                if (failCount > 0) {
+                    reasons.push(`Failed: ${failCount} request failure(s) were reported.`);
+                }
+
+                // Only report percentile failures when this testcase's
+                // expected result explicitly requires percentile validation.
+                if (
+                    percentileRequirement.showPercentiles &&
+                    metrics?.percentile_passed === false
+                ) {
+                    const failedPercentiles = [];
+                    if (metrics.p50_pass === false) failedPercentiles.push("P50");
+                    if (metrics.p95_pass === false) failedPercentiles.push("P95");
+                    if (metrics.p99_pass === false) failedPercentiles.push("P99");
+
+                    if (failedPercentiles.length) {
+                        reasons.push(
+                            `Failed percentile checks: ${failedPercentiles.join(", ")}.`
+                        );
+                    }
+                }
+            }
+
+            if (Array.isArray(failureDetails) && failureDetails.length) {
+                reasons.push(...failureDetails);
+            }
+
+            return reasons.join("\n• ");
         }
 
         function getPerformanceConfigurationType(scenario) {
@@ -4316,6 +4697,12 @@
                     perfConfigs[`${type}_unit`] = "seconds";
                 });
 
+                // Rate-limit has its own compatibility key because its UI value
+                // represents request volume while spawn is stored separately.
+                perfConfigs.rate_limit_spawn = "";
+                perfConfigs.rate_limit_duration = "";
+                perfConfigs.rate_limit_unit = "seconds";
+
                 Object.values(performanceScenarioConfigs).forEach((config) => {
                     if (!config || !config.type) {
                         return;
@@ -4338,6 +4725,10 @@
                     } else if (config.type === "rate_limit") {
                         if (config.value !== null && config.value !== undefined) {
                             perfConfigs.rate_limit = config.value;
+                        }
+
+                        if (config.spawn !== null && config.spawn !== undefined) {
+                            perfConfigs.rate_limit_spawn = config.spawn;
                         }
 
                         if (config.duration !== null && config.duration !== undefined) {
@@ -5208,7 +5599,14 @@
                 else if (categoryType.includes("security") || categoryType.includes("auth")) categoryClass = "category-security";
                 else if (categoryType.includes("performance") || categoryType.includes("load")) categoryClass = "category-performance";
 
-                let isPerf = categoryType.includes("performance") || categoryType.includes("load");
+                const caseId = String(tc.id || tc.test_case_id || tc.test_case_number || "").toUpperCase();
+                const scenarioText = String(tc.scenario || "").toLowerCase();
+                let isPerf =
+                    categoryType.includes("performance") ||
+                    categoryType.includes("load") ||
+                    caseId.includes("_PERF_") ||
+                    scenarioText.includes("conditional get") ||
+                    scenarioText.includes("caching headers");
                 if (isPerf) hasPerf = true;
                 else hasFunc = true;
 
@@ -5223,8 +5621,10 @@
                 else if (tc.expected) expectedDisplay = tc.expected;
 
                 let perfInputs = "";
+                let perfConfigForEstimate = null;
                 if (isPerf) {
                     const config = getPerformanceConfigForScenario(tc);
+                    perfConfigForEstimate = config;
 
                     if (config) {
                         const labels = {
@@ -5290,6 +5690,32 @@
                     }
                 }
 
+                if (isPerf && perfConfigForEstimate) {
+                    const estimatedSeconds = getPerformanceExecutionEstimateSeconds(
+                        tc,
+                        perfConfigForEstimate
+                    );
+
+                    perfInputs += `
+                        <div
+                            class="performance-case-estimate"
+                            data-performance-estimate-index="${i}"
+                            style="
+                                margin-top: 6px;
+                                padding: 6px 10px;
+                                border-radius: 8px;
+                                background: #f5f3ff;
+                                border: 1px solid #ddd6fe;
+                                color: #6b21a8;
+                                font-size: 0.75rem;
+                            "
+                        >
+                            <i data-lucide="clock" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i>
+                            Estimated execution: <strong>≈ ${formatPerformanceEstimate(estimatedSeconds)}</strong>
+                        </div>
+                    `;
+                }
+
                 const testCaseCard = document.createElement("div");
                 testCaseCard.className = "test-case-card";
                 testCaseCard.setAttribute("title", tc.scenario || "Test Scenario");
@@ -5319,6 +5745,7 @@
             document.getElementById("testCasesWrapper").style.display = "block";
 
             setupCheckboxListeners();
+            updatePerformanceEstimateHeader();
         }
 
         function setupCheckboxListeners() {
@@ -5340,6 +5767,7 @@
 
                 master.onchange = function (e) {
                     list.querySelectorAll(".test-case-checkbox").forEach((cb) => (cb.checked = e.target.checked));
+                    if (masterId === "selectAllPerfCheckbox") updatePerformanceEstimateHeader();
                 };
 
                 list.addEventListener("change", function (e) {
@@ -5348,6 +5776,7 @@
                         const checkedCount = list.querySelectorAll(".test-case-checkbox:checked").length;
                         master.checked = checkedCount === total && total > 0;
                         master.indeterminate = checkedCount > 0 && checkedCount < total;
+                        if (masterId === "selectAllPerfCheckbox") updatePerformanceEstimateHeader();
                     }
                 });
             }
@@ -7763,6 +8192,46 @@
             };
         }
 
+        function buildPerformanceExecutionDisplayUrl(testCase, fallbackEndpoint, fallbackBaseUrl) {
+            const baseUrl = String(
+                testCase?.baseUrl ||
+                testCase?.base_url ||
+                fallbackBaseUrl ||
+                ""
+            ).replace(/\/$/, "");
+
+            let endpoint = String(
+                testCase?.endpoint ||
+                fallbackEndpoint ||
+                "/"
+            );
+
+            const pathValues =
+                testCase?.path_parameter_values &&
+                typeof testCase.path_parameter_values === "object"
+                    ? testCase.path_parameter_values
+                    : {};
+
+            // Mirror the backend performance runner's path-parameter
+            // resolution so the log shows the URL actually targeted.
+            endpoint = endpoint.replace(
+                /\{([^{}]+)\}/g,
+                (match, name) => {
+                    const key = String(name).trim();
+                    const value = pathValues[key];
+                    return value !== undefined && value !== null
+                        ? String(value)
+                        : match;
+                }
+            );
+
+            if (!endpoint.startsWith("/")) {
+                endpoint = "/" + endpoint;
+            }
+
+            return baseUrl + endpoint;
+        }
+
         async function executePerformanceTest() {
             if (!activeSuiteCases || activeSuiteCases.length === 0) {
                 showError("No active suite loaded.");
@@ -7786,6 +8255,8 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner"></span> Testing...';
 
+            startPerformanceEstimateTimer(selected);
+
             document.getElementById("performanceCard").style.display = "block";
             const placeholder = document.getElementById("perf-placeholder");
             if (placeholder) placeholder.style.display = "none";
@@ -7803,10 +8274,13 @@
                 const tcIndex = activeSuiteCases.indexOf(tc);
                 const row = document.querySelector(`.test-case-checkbox[data-index="${tcIndex}"]`).closest(".test-case-card");
 
+                setCurrentPerformanceEstimateCase(tc, i);
+
                 const performanceConfig = getPerformanceConfigForScenario(tc);
 
                 if (!performanceConfig) {
                     showError(`Performance configuration is missing for scenario: ${tc.scenario}`);
+                    completeCurrentPerformanceEstimateCase(tc, 0, "error");
                     continue;
                 }
 
@@ -7816,6 +8290,7 @@
 
                 if (performanceConfig.type === "caching") {
                     console.log("CACHING CONFIG:", performanceConfig);
+                    const caseStartedAt = Date.now();
 
                     try {
                         const res = await fetch("/api/run-performance", {
@@ -7828,6 +8303,7 @@
                                 endpoint: tc.endpoint || "/",
                                 baseUrl: tc.baseUrl || tc.base_url,
                                 performanceConfig: performanceConfig,
+                                scenarioId: tc.id || tc.test_case_id || tc.test_case_number,
                             }),
                         });
 
@@ -7862,15 +8338,12 @@
 
                         totalFails += Number(metrics.failures || 0);
 
-                        let cleanBase = (tc.baseUrl || tc.base_url || "").replace(/\/$/, "");
-
-                        let tcEndpoint = tc.endpoint || "/";
-
-                        if (!tcEndpoint.startsWith("/")) {
-                            tcEndpoint = "/" + tcEndpoint;
-                        }
-
-                        const displayUrl = cleanBase + tcEndpoint;
+                        const displayUrl =
+                            buildPerformanceExecutionDisplayUrl(
+                                tc,
+                                tc.endpoint || "/",
+                                tc.baseUrl || tc.base_url || ""
+                            );
 
                         let failureText = "";
 
@@ -7880,7 +8353,7 @@
 
                         const details = `
 Caching Test Execution Complete
-Target: ${displayUrl} [${tc.method || "GET"}]
+Target: ${displayUrl} 
 Scenario: ${tc.scenario}
 Caching Configuration: ${performanceConfig.value}
 
@@ -7888,7 +8361,13 @@ Metrics:
 • Total Requests: ${metrics.requests_made || 0}
 • Failures: ${metrics.failures || 0}
 • Average Latency: ${metrics.avg_ms || 0} ms
-• Max Latency: ${metrics.max_ms || 0} ms${failureText}
+• Max Latency: ${metrics.max_ms || 0} ms
+
+Expected:
+${getPerformanceExpectedSummary(tc)}
+
+Result:
+${getPerformancePassFailReason(tc, metrics, isPass, failureDetails)}${failureText}
 
 Actual Output:
 ${sampleOutput}
@@ -7927,13 +8406,19 @@ ${sampleOutput}
         `;
 
                         perfResultsList.appendChild(item);
-                        const cachingBadge = document.getElementById(`status-${tcIndex}`);
+                        const cachingBadge = document.getElementById(`perf-status-${tcIndex}`);
 
                         if (cachingBadge) {
                             cachingBadge.className = `execution-badge ${isPass ? "status-passed" : "status-failed"}`;
 
                             cachingBadge.textContent = isPass ? "Passed" : "Failed";
                         }
+
+                        completeCurrentPerformanceEstimateCase(
+                            tc,
+                            (Date.now() - caseStartedAt) / 1000,
+                            "completed"
+                        );
                         continue;
                     } catch (e) {
                         const item = document.createElement("div");
@@ -7963,6 +8448,11 @@ ${sampleOutput}
 
                         perfResultsList.appendChild(item);
 
+                        completeCurrentPerformanceEstimateCase(
+                            tc,
+                            (Date.now() - caseStartedAt) / 1000,
+                            "error"
+                        );
                         continue;
                     }
                 }
@@ -8003,6 +8493,7 @@ ${sampleOutput}
                     continue;
                 }
                 console.log("TEST CASE:", tc);
+                const caseStartedAt = Date.now();
                 try {
                     const res = await fetch("/api/run-performance", {
                         method: "POST",
@@ -8063,13 +8554,23 @@ ${sampleOutput}
 
                     const p99Status = metrics.p99_pass ? "✅" : "❌";
 
-                    const percentilePassed = metrics.percentile_passed === true;
+                    const percentileRequirement = getRequiredPerformancePercentiles(tc);
+
+                    // Percentile results affect PASS/FAIL only when the
+                    // testcase expected result explicitly requires at least
+                    // one percentile metric.
+                    const percentilePassed =
+                        !percentileRequirement.showPercentiles ||
+                        metrics.percentile_passed === true;
 
                     totalReqs += parseInt(reqMade, 10) || 0;
 
                     totalFails += parseInt(failCount, 10) || 0;
 
-                    const isPass = (parseInt(failCount, 10) || 0) === 0 && percentilePassed;
+                    const isPass =
+                        (parseInt(failCount, 10) || 0) === 0 &&
+                        percentilePassed;
+
                     if (isPass) passed++;
 
                     if (tcIndex !== -1) {
@@ -8084,13 +8585,23 @@ ${sampleOutput}
                     item.className = "result-item";
                     item.style.borderLeft = `4px solid ${isPass ? "var(--success)" : "var(--danger)"}`;
 
-                    let cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-                    let tcEndpoint = activeEndpoint;
-                    if (!tcEndpoint.startsWith("/")) tcEndpoint = "/" + tcEndpoint;
-                    let displayUrl = cleanBase + tcEndpoint;
+                    let displayUrl =
+                        buildPerformanceExecutionDisplayUrl(
+                            tc,
+                            activeEndpoint,
+                            baseUrl
+                        );
 
-                    if (tc.input && typeof tc.input === "string" && tc.input.startsWith("/")) displayUrl = cleanBase + tc.input;
-                    else if (tc.input && typeof tc.input === "string" && tc.input.startsWith("?")) displayUrl += tc.input;
+                    // Preserve the existing query-parameter display behavior
+                    // when a performance testcase explicitly supplies a query
+                    // string as its input. Path parameters are resolved above.
+                    if (
+                        tc.input &&
+                        typeof tc.input === "string" &&
+                        tc.input.startsWith("?")
+                    ) {
+                        displayUrl += tc.input;
+                    }
 
                     let failureText = "";
                     if (failCount > 0 && failureDetails.length > 0) failureText = `\n\n❌ Failure Reasons:\n• ` + failureDetails.join(`\n• `);
@@ -8099,7 +8610,7 @@ ${sampleOutput}
                     const percentileResult = percentilePassed ? "PASS" : "FAIL";
 
                     const details = `🚀 Load Test Execution Complete
-Target: ${displayUrl} [${activeMethod}]
+Target: ${displayUrl}
 Scenario: ${tc.scenario}
 Configuration: ${users} Users | Spawn: ${spawnRate}/sec | Duration: ${runTime}
 
@@ -8110,12 +8621,22 @@ Metrics:
 • Max Latency: ${maxMs} ms
 • Throughput: ${rps} req/sec${failureText}
 
-Percentile Metrics:
-• P50 = ${p50} ms (expected: P50 < 500 ms) ${p50Status}
-• P95 = ${p95} ms (expected: P95 < 1,000 ms) ${p95Status}
-• P99 = ${p99} ms (expected: P99 < 2,000 ms) ${p99Status}
+${getPerformanceExecutionSummary(tc, metrics)}
 
-Percentile Result: ${percentileResult}
+Expected:
+${getPerformanceExpectedSummary(tc)}
+
+Result:
+${getPerformancePassFailReason(tc, metrics, isPass, failureDetails)}
+
+${percentileRequirement.showPercentiles ? `
+Percentile Metrics:
+• P50 = ${p50} ms (threshold: < 500 ms) ${p50Status}
+• P95 = ${p95} ms (threshold: < 1,000 ms) ${p95Status}
+• P99 = ${p99} ms (threshold: < 2,000 ms) ${p99Status}
+
+Percentile Result: ${percentilePassed ? "PASS" : "FAIL"}
+` : ""}
 
 Actual Output (Sample Response):
 ${sampleOutput}`;
@@ -8128,6 +8649,12 @@ ${sampleOutput}`;
                         <div class="result-details">${details}</div>
                     `;
                     perfResultsList.appendChild(item);
+
+                    completeCurrentPerformanceEstimateCase(
+                        tc,
+                        (Date.now() - caseStartedAt) / 1000,
+                        "completed"
+                    );
 
                     addToHistory({
                         type: "Performance",
@@ -8145,6 +8672,12 @@ ${sampleOutput}`;
                     item.style.borderLeft = `4px solid var(--danger)`;
                     item.innerHTML = `<div class="result-header"><span class="badge badge-danger">ERROR</span><div style="font-weight:600; flex:1">TC-${tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div></div><div class="result-details">Execution failed: ${e.message}</div>`;
                     perfResultsList.appendChild(item);
+
+                    completeCurrentPerformanceEstimateCase(
+                        tc,
+                        (Date.now() - caseStartedAt) / 1000,
+                        "error"
+                    );
                 }
             }
 
@@ -8164,8 +8697,11 @@ ${sampleOutput}`;
                     cumulativeSuccessMetrics.failed;
             }
 
+            stopPerformanceEstimateTimer();
+
             btn.disabled = false;
             btn.innerHTML = originalHtml;
+            updatePerformanceEstimateHeader();
             showSuccess(`Performance testing complete: ${passed}/${total} passed.`);
         }
 
