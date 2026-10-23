@@ -17,6 +17,7 @@ def run_etag_caching_test(
     endpoint,
     method,
     payload=None,
+    expected_metrics=None,
     scenario_id=None,
 ):
     """
@@ -66,6 +67,30 @@ def run_etag_caching_test(
     latencies = []
     failure_details = []
     output = []
+    expected_metrics = expected_metrics if isinstance(expected_metrics, dict) else {}
+
+    def expected_code(key, default=None):
+        value = expected_metrics.get(key, default)
+        try:
+            return int(value) if value not in (None, "") else default
+        except (TypeError, ValueError):
+            return default
+
+    expected_first_status = expected_code("first_response_status", None)
+    expected_conditional_status = expected_code("conditional_response_status", None)
+    require_any_cache_header = bool(expected_metrics.get("require_any_cache_header", False))
+    require_etag = bool(expected_metrics.get("require_etag", False))
+    require_cache_control = bool(expected_metrics.get("require_cache_control", False))
+    has_configured_cache_expectations = any(
+        value not in (None, "", False)
+        for value in [
+            expected_metrics.get("first_response_status"),
+            expected_metrics.get("conditional_response_status"),
+            expected_metrics.get("require_any_cache_header"),
+            expected_metrics.get("require_etag"),
+            expected_metrics.get("require_cache_control"),
+        ]
+    )
 
     # =========================================================
     # FIRST REQUEST
@@ -110,6 +135,12 @@ def run_etag_caching_test(
         f"First Request: HTTP {first_response.status_code}"
     )
 
+    if expected_first_status is not None and first_response.status_code != expected_first_status:
+        failures += 1
+        failure_details.append(
+            f"Expected first response HTTP {expected_first_status} but received HTTP {first_response.status_code}."
+        )
+
     output.append(
         f"ETag: {etag or 'Not Present'}"
     )
@@ -129,17 +160,26 @@ def run_etag_caching_test(
         or cache_test_id == "GET_CACHE_02"
     )
 
-    if not etag and not cache_control:
-
+    # User-configured header expectations are additive to the existing
+    # cache behavior. When none are configured, the legacy "at least one
+    # cache header" check is retained.
+    if require_any_cache_header and not etag and not cache_control:
         failures += 1
-
         failure_details.append(
             "Neither ETag nor Cache-Control header was present."
         )
 
-        # For the conditional-GET testcase, the absence of an ETag is a
-        # blocking failure because the second If-None-Match request cannot
-        # be constructed correctly.
+    if require_etag and not etag:
+        failures += 1
+        failure_details.append("ETag header was required but was not present.")
+
+    if require_cache_control and not cache_control:
+        failures += 1
+        failure_details.append("Cache-Control header was required but was not present.")
+
+    if not has_configured_cache_expectations and not etag and not cache_control:
+        # Preserve the legacy behavior when the new expected-result settings
+        # are not supplied.
         if not is_conditional_get_test:
             return {
                 "success": True,
@@ -219,10 +259,12 @@ def run_etag_caching_test(
                     f"If-None-Match: {etag}"
                 )
 
-                if second_response.status_code == 304:
+                expected_status = expected_conditional_status or 304
+
+                if second_response.status_code == expected_status:
 
                     output.append(
-                        "ETag validation: PASS"
+                        f"ETag validation: PASS (expected HTTP {expected_status})"
                     )
 
                 else:
@@ -230,9 +272,8 @@ def run_etag_caching_test(
                     failures += 1
 
                     failure_details.append(
-                        "Expected HTTP 304 Not Modified "
-                        f"but received HTTP "
-                        f"{second_response.status_code}."
+                        f"Expected HTTP {expected_status} "
+                        f"but received HTTP {second_response.status_code}."
                     )
 
                     output.append(
