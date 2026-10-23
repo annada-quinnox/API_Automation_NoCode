@@ -1268,18 +1268,26 @@ def execute_single_test(endpoint, method, test_case, environment="mock", base_ur
     if method in ["GET", "DELETE"]:
         if isinstance(payload, str):
             if payload.startswith("/"):
+                # A slash-prefixed input is an explicitly generated endpoint
+                # (for example, a path-parameter testcase). Keep this behavior.
                 current_endpoint = replace_path_parameters(
                     payload,
                     path_parameter_values
                 )
                 payload = {}
             elif payload.startswith("?") or "=" in payload:
+                # Only an explicit query expression is applied as query data.
                 payload = parse_query_params(payload)
             else:
-                current_endpoint = current_endpoint.rstrip("/") + "/" + payload
+                # Testcase `input` often contains descriptive values such as
+                # "Valid request". It is not an endpoint or parameter unless
+                # it is explicitly expressed as a path or query above.
+                # Keep the configured endpoint unchanged.
                 payload = {}
         elif payload is not None and not isinstance(payload, (dict, list)):
-            current_endpoint = current_endpoint.rstrip("/") + "/" + str(payload)
+            # Scalar/descriptive testcase input must not be appended to the URL.
+            # Actual configured path values are substituted via
+            # path_parameter_values or an explicit slash-prefixed path input.
             payload = {}
 
         test_case["input"] = payload
