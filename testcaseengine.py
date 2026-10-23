@@ -52,13 +52,33 @@ class GenerateTestcases:
 
         print(f"Base URL received for generation: {base_url}")
 
-        if search_string and method.upper() in ['GET', 'DELETE']:
+        search_text = str(search_string or "").strip()
+        selected_param_type = str(param_type or "query").strip().lower()
+        has_path_placeholders = bool(re.search(r"\{[^{}]+\}", str(endpoint or "")))
+
+        # Parameter-specific cases should be generated only when the selected
+        # parameter configuration is complete. Query values without a field
+        # name must not be reinterpreted as path values, and path values must
+        # not be applied to endpoints that have no path placeholder.
+        has_explicit_query_name = bool(str(field_name or "").strip())
+        if not has_explicit_query_name and "=" in search_text:
+            raw_query_name = search_text.split("=", 1)[0].strip().lstrip("?").strip()
+            has_explicit_query_name = bool(raw_query_name)
+
+        parameter_configuration_is_usable = False
+        if search_text and method.upper() in ['GET', 'DELETE']:
+            if selected_param_type == "path":
+                parameter_configuration_is_usable = has_path_placeholders
+            elif selected_param_type == "query":
+                parameter_configuration_is_usable = has_explicit_query_name
+
+        if parameter_configuration_is_usable:
             self.test_cases = self._generate_query_param_testcases(
                 endpoint,
-                search_string,
+                search_text,
                 field_name,
                 method,
-                param_type,
+                selected_param_type,
                 path_parameter_values
             )
         else:
