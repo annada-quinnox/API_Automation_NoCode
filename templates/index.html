@@ -1571,6 +1571,14 @@
                                     <span>Select All</span>
                                 </label>
                             </label>
+                            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                                <button type="button" class="btn btn-outline" id="suiteBuilderExportBtn"
+                                    onclick="exportSuiteBuilderPoolGroupToExcel()"
+                                    style="padding: 7px 12px; font-size: 0.8rem;" disabled>
+                                    <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                                    Export Pool Group to Excel
+                                </button>
+                            </div>
                             <div id="suiteScenarioList"
                                 style="flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff">
                             </div>
@@ -1760,11 +1768,16 @@
                 <div class="modal-body" style="max-height: 400px; overflow-y: auto">
                     <div id="viewGroupScenarioList"></div>
                 </div>
-                <div class="modal-footer" style="justify-content: space-between">
-                    <button class="btn" style="background: #fef2f2; color: var(--danger); border: 1px solid #fca5a5"
-                        id="viewGroupDeleteBtn">
-                        <i data-lucide="trash-2"></i> Delete Group
-                    </button>
+                <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px">
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+                        <button class="btn btn-primary" id="viewGroupExportBtn" onclick="exportViewedPoolGroupToExcel()">
+                            <i data-lucide="download"></i> Export to Excel
+                        </button>
+                        <button class="btn" style="background: #fef2f2; color: var(--danger); border: 1px solid #fca5a5"
+                            id="viewGroupDeleteBtn">
+                            <i data-lucide="trash-2"></i> Delete Group
+                        </button>
+                    </div>
                     <button class="btn btn-primary"
                         onclick="document.getElementById('viewGroupModal').style.display='none'">Close</button>
                 </div>
@@ -2303,6 +2316,7 @@
         let lastResults = [];
         let lastExecutedTestCases = [];
         let pendingPoolDeleteKey = null;
+        let currentViewedPoolGroupKey = null;
         let pendingSuiteDeleteId = null;
         let pendingSuiteSave = null;
 
@@ -2765,6 +2779,7 @@
             const scenarios = window.testCasePool[key];
             if (!scenarios) return;
 
+            currentViewedPoolGroupKey = key;
             document.getElementById("viewGroupName").textContent = key;
             const list = document.getElementById("viewGroupScenarioList");
             list.innerHTML = "";
@@ -2778,11 +2793,99 @@
                 `;
             });
 
+            const exportButton = document.getElementById("viewGroupExportBtn");
+            if (exportButton) {
+                exportButton.disabled = scenarios.length === 0;
+                exportButton.title = scenarios.length
+                    ? `Export ${scenarios.length} saved test cases to Excel`
+                    : "There are no test cases to export";
+            }
+
             document.getElementById("viewGroupDeleteBtn").onclick = function () {
                 deletePoolGroup(key);
             };
 
             document.getElementById("viewGroupModal").style.display = "flex";
+        }
+
+        // Export the exact saved pool-group cases without regenerating them.
+        async function exportPoolGroupToExcel(groupKey, buttonId) {
+            const scenarios = groupKey ? window.testCasePool[groupKey] : null;
+
+            if (!Array.isArray(scenarios) || scenarios.length === 0) {
+                showError("No saved test cases are available in this pool group to export.");
+                return;
+            }
+
+            const firstCase = scenarios[0] || {};
+            const method = String(firstCase.method || "GET").trim().toUpperCase();
+            const endpoint = String(firstCase.endpoint || "/api/test").trim();
+            const baseUrl = firstCase.baseUrl || firstCase.base_url || "";
+            const button = document.getElementById(buttonId);
+            const originalButtonHtml = button ? button.innerHTML : "";
+
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<span class="loading-spinner"></span> Exporting...';
+            }
+
+            try {
+                const response = await fetch("/api/export-excel", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        test_cases: scenarios,
+                        method,
+                        endpoint,
+                        baseUrl,
+                    }),
+                });
+
+                if (!response.ok) {
+                    let message = `Export failed (HTTP ${response.status}).`;
+                    try {
+                        const errorData = await response.json();
+                        message = errorData.error || errorData.message || message;
+                    } catch (e) { }
+                    throw new Error(message);
+                }
+
+                const blob = await response.blob();
+                const objectUrl = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                const safeEndpoint = endpoint
+                    .replace(/[?#].*$/, "")
+                    .replace(/^\/+|\/+$/g, "")
+                    .replace(/[\/\\]+/g, "_")
+                    .replace(/[^a-zA-Z0-9._-]/g, "_") || "root";
+
+                anchor.href = objectUrl;
+                anchor.download = `${method}_${safeEndpoint}_Saved_Test_Cases_${Date.now()}.xlsx`;
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+
+                showSuccess(`Exported ${scenarios.length} saved test cases to Excel.`);
+            } catch (error) {
+                showError("Export failed: " + error.message);
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalButtonHtml;
+                }
+                lucide.createIcons();
+            }
+        }
+
+        async function exportViewedPoolGroupToExcel() {
+            await exportPoolGroupToExcel(currentViewedPoolGroupKey, "viewGroupExportBtn");
+        }
+
+        async function exportSuiteBuilderPoolGroupToExcel() {
+            const firstPoolCase = document.querySelector("#suiteScenarioList .suite-builder-cb");
+            const groupKey = firstPoolCase ? firstPoolCase.dataset.key : null;
+            await exportPoolGroupToExcel(groupKey, "suiteBuilderExportBtn");
         }
 
         function navigateTo(viewId, navId) {
@@ -2850,9 +2953,20 @@
             if (!Number.isFinite(duration) || duration <= 0) return 0;
 
             const unit = String(config.unit || "seconds").toLowerCase();
-            if (unit === "hours") return duration * 3600;
-            if (unit === "minutes") return duration * 60;
-            return duration;
+            let configuredSeconds;
+
+            if (unit === "hours") {
+                configuredSeconds = duration * 3600;
+            } else if (unit === "minutes") {
+                configuredSeconds = duration * 60;
+            } else {
+                configuredSeconds = duration;
+            }
+
+            // UI-only buffer for Locust startup, result collection, CSV
+            // processing, and the final response/rendering overhead.
+            // This does NOT change the actual Locust run duration.
+            return configuredSeconds + 10;
         }
 
         function getSelectedPerformanceCases() {
@@ -3184,6 +3298,229 @@
             return fieldConfigs;
         }
 
+        function getPerformanceExpectedMetricDefinitions(scenario, configurationType) {
+            const id = String(scenario?.id || "").toUpperCase();
+
+            // These fields are configuration inputs, not generated testcase text.
+            // The same configuration type shares the same expected metric values
+            // across all of its performance scenarios.
+            if (configurationType === "load_factor") {
+                return [
+                    { key: "p50_max_ms", label: "Max P50 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 500", defaultValue: 500 },
+                    { key: "p95_max_ms", label: "Max P95 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 1000", defaultValue: 1000 },
+                    { key: "p99_max_ms", label: "Max P99 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 2000", defaultValue: 2000 },
+                    { key: "min_rps", label: "Min Throughput (RPS)", type: "number", min: "0", step: "0.1", placeholder: "Optional" },
+                    { key: "max_error_rate_pct", label: "Max Error Rate (%)", type: "number", min: "0", step: "0.1", placeholder: "Optional" },
+                    { key: "max_5xx", label: "Max 5xx Responses", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                ];
+            }
+
+            if (configurationType === "stress_factor") {
+                return [
+                    { key: "p50_max_ms", label: "Max P50 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 500", defaultValue: 500 },
+                    { key: "p95_max_ms", label: "Max P95 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 1000", defaultValue: 1000 },
+                    { key: "p99_max_ms", label: "Max P99 (ms)", type: "number", min: "0", step: "1", placeholder: "e.g. 2000", defaultValue: 2000 },
+                    { key: "max_error_rate_pct", label: "Max Error Rate (%)", type: "number", min: "0", step: "0.1", placeholder: "Optional" },
+                    { key: "max_5xx", label: "Max 5xx Responses", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                    { key: "max_429", label: "Max 429 Responses", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                ];
+            }
+
+            if (configurationType === "endurance") {
+                return [
+                    { key: "max_avg_ms", label: "Max Avg Latency (ms)", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                    { key: "min_rps", label: "Min Throughput (RPS)", type: "number", min: "0", step: "0.1", placeholder: "Optional" },
+                    { key: "max_error_rate_pct", label: "Max Error Rate (%)", type: "number", min: "0", step: "0.1", placeholder: "Optional" },
+                    { key: "max_5xx", label: "Max 5xx Responses", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                    { key: "max_429", label: "Max 429 Responses", type: "number", min: "0", step: "1", placeholder: "Optional" },
+                ];
+            }
+
+            if (configurationType === "rate_limit") {
+                return [
+                    { key: "threshold_rpm", label: "Rate-Limit Threshold (RPM)", type: "number", min: "1", step: "1", placeholder: "e.g. 100", defaultValue: 100 },
+                    { key: "below_threshold_status", label: "Expected Status Below Threshold", type: "select", options: [["2xx", "2xx"], ["3xx", "3xx"]], defaultValue: "2xx" },
+                    { key: "above_threshold_status", label: "Expected Status At / Above Threshold", type: "select", options: [["429", "429 Too Many Requests"], ["2xx", "2xx"]], defaultValue: "429" },
+                    { key: "max_5xx", label: "Max 5xx Responses", type: "number", min: "0", step: "1", placeholder: "e.g. 0", defaultValue: 0 },
+                ];
+            }
+
+            if (configurationType === "caching") {
+                return [
+                    { key: "first_response_status", label: "Expected First Response Code", type: "number", min: "100", max: "599", step: "1", placeholder: "e.g. 200", defaultValue: 200 },
+                    { key: "conditional_response_status", label: "Expected Conditional Response Code", type: "number", min: "100", max: "599", step: "1", placeholder: "e.g. 304", defaultValue: 304 },
+                    { key: "require_any_cache_header", label: "Require ETag or Cache-Control", type: "checkbox", defaultValue: true },
+                    { key: "require_etag", label: "Require ETag", type: "checkbox", defaultValue: false },
+                    { key: "require_cache_control", label: "Require Cache-Control", type: "checkbox", defaultValue: false },
+                ];
+            }
+
+            return [];
+        }
+
+        function buildPerformanceExpectedResultFields(scenario, configurationType) {
+            const definitions = getPerformanceExpectedMetricDefinitions(scenario, configurationType);
+            if (!definitions.length) {
+                return "";
+            }
+
+            const fieldsHtml = definitions.map((def) => {
+                if (def.type === "checkbox") {
+                    const checked = def.defaultValue ? "checked" : "";
+                    return `
+                        <label style="
+                            display:flex;
+                            align-items:center;
+                            gap:8px;
+                            padding:9px 10px;
+                            border:1px solid var(--border);
+                            border-radius:10px;
+                            background:#f8fafc;
+                            cursor:pointer;
+                            min-height:44px;
+                            box-sizing:border-box;
+                        ">
+                            <input
+                                type="checkbox"
+                                class="performance-expected-input"
+                                data-expected-type="${escapeHtml(configurationType)}"
+                                data-expected-key="${escapeHtml(def.key)}"
+                                ${checked}
+                                style="width:16px !important;height:16px !important;flex-shrink:0;"
+                            >
+                            <span style="font-size:0.72rem;font-weight:600;color:var(--dark);">
+                                ${escapeHtml(def.label)}
+                            </span>
+                        </label>
+                    `;
+                }
+
+                if (def.type === "select") {
+                    const options = def.options.map(([value, label]) => `
+                        <option value="${escapeHtml(value)}">${escapeHtml(label)}</option>
+                    `).join("");
+
+                    return `
+                        <div>
+                            <label style="
+                                display:block;
+                                font-size:0.7rem;
+                                font-weight:600;
+                                color:var(--gray);
+                                margin-bottom:5px;
+                            ">
+                                ${escapeHtml(def.label)}
+                            </label>
+                            <select
+                                class="performance-expected-input"
+                                data-expected-type="${escapeHtml(configurationType)}"
+                                data-expected-key="${escapeHtml(def.key)}"
+                            >
+                                ${options}
+                            </select>
+                        </div>
+                    `;
+                }
+
+                const defaultValue =
+                    def.defaultValue !== undefined && def.defaultValue !== null
+                        ? `value="${escapeHtml(def.defaultValue)}"`
+                        : "";
+
+                return `
+                    <div>
+                        <label style="
+                            display:block;
+                            font-size:0.7rem;
+                            font-weight:600;
+                            color:var(--gray);
+                            margin-bottom:5px;
+                        ">
+                            ${escapeHtml(def.label)}
+                        </label>
+                        <input
+                            type="number"
+                            class="performance-expected-input"
+                            data-expected-type="${escapeHtml(configurationType)}"
+                            data-expected-key="${escapeHtml(def.key)}"
+                            ${def.min !== undefined ? `min="${escapeHtml(def.min)}"` : ""}
+                            ${def.max !== undefined ? `max="${escapeHtml(def.max)}"` : ""}
+                            ${def.step !== undefined ? `step="${escapeHtml(def.step)}"` : ""}
+                            placeholder="${escapeHtml(def.placeholder || "")}" 
+                            ${defaultValue}
+                        >
+                    </div>
+                `;
+            }).join("");
+
+            return `
+                <div
+                    class="performance-expected-fields"
+                    data-expected-type="${escapeHtml(configurationType)}"
+                    style="
+                        margin-top:12px;
+                        padding:12px;
+                        border:1px solid #ddd6fe;
+                        border-radius:12px;
+                        background:#faf9ff;
+                    "
+                >
+                    <div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:8px;">
+                        Expected Results
+                    </div>
+                    <div style="
+                        display:grid;
+                        grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+                        gap:10px;
+                    ">
+                        ${fieldsHtml}
+                    </div>
+                    <div style="font-size:0.68rem;color:var(--gray);margin-top:8px;">
+                        These values are user-defined expectations. The same expected values are shared across scenarios of the same performance configuration type.
+                    </div>
+                </div>
+            `;
+        }
+
+        function syncPerformanceExpectedMetricInput(sourceInput) {
+            const type = sourceInput?.dataset?.expectedType;
+            const key = sourceInput?.dataset?.expectedKey;
+            if (!type || !key) return;
+
+            document.querySelectorAll(
+                `.performance-expected-input[data-expected-type="${type}"][data-expected-key="${key}"]`
+            ).forEach((input) => {
+                if (input === sourceInput) return;
+                if (input.type === "checkbox") {
+                    input.checked = sourceInput.checked;
+                } else {
+                    input.value = sourceInput.value;
+                }
+            });
+        }
+
+        function renumberPerformanceScenarioConfigCards() {
+            const cards = Array.from(
+                document.querySelectorAll("#perf-config-container .performance-scenario-config-card")
+            );
+            let number = 0;
+
+            cards.forEach((card) => {
+                const checkbox = card.querySelector(".performance-scenario-checkbox");
+                const label = card.querySelector(".performance-scenario-display-id");
+                const selected = checkbox ? checkbox.checked : false;
+
+                if (selected) {
+                    number += 1;
+                    card.dataset.displayNumber = String(number);
+                    if (label) label.textContent = `PERF-${String(number).padStart(2, "0")}`;
+                } else {
+                    card.dataset.displayNumber = "";
+                    if (label) label.textContent = "PERF-—";
+                }
+            });
+        }
+
         function renderPerformanceScenarioList(scenarios) {
             const container = document.getElementById("perf-config-container");
 
@@ -3271,6 +3608,7 @@
             `;
 
                 const configurationHtml = buildPerformanceConfigurationFields(scenario, configurationType);
+                const expectedMetricsHtml = buildPerformanceExpectedResultFields(scenario, configurationType);
 
                 card.innerHTML = `
 
@@ -3316,16 +3654,19 @@
                                 min-width: 0;
                             ">
 
-                                <span style="
-                                    font-size: 0.7rem;
-                                    font-weight: 700;
-                                    color: var(--primary);
-                                    background: #f5f3ff;
-                                    padding: 3px 7px;
-                                    border-radius: 6px;
-                                    white-space: nowrap;
-                                ">
-                                    ${escapeHtml(scenario.id || `PERF-${index + 1}`)}
+                                <span
+                                    class="performance-scenario-display-id"
+                                    style="
+                                        font-size: 0.7rem;
+                                        font-weight: 700;
+                                        color: var(--primary);
+                                        background: #f5f3ff;
+                                        padding: 3px 7px;
+                                        border-radius: 6px;
+                                        white-space: nowrap;
+                                    "
+                                >
+                                    PERF-${String(index + 1).padStart(2, "0")}
                                 </span>
 
                                 <span style="
@@ -3426,6 +3767,7 @@
                             margin-top: 12px;
                         ">
                             ${configurationHtml}
+                            ${expectedMetricsHtml}
                         </div>
 
                     </div>
@@ -3433,9 +3775,25 @@
                 </div>
             `;
 
-                container.appendChild(card);
+                    container.appendChild(card);
             });
+
+            container.querySelectorAll(".performance-expected-input").forEach((input) => {
+                input.addEventListener("input", () => syncPerformanceExpectedMetricInput(input));
+                input.addEventListener("change", () => {
+                    syncPerformanceExpectedMetricInput(input);
+                    renumberPerformanceScenarioConfigCards();
+                });
+            });
+
+            container.querySelectorAll(".performance-scenario-checkbox").forEach((checkbox) => {
+                checkbox.addEventListener("change", () => {
+                    renumberPerformanceScenarioConfigCards();
+                });
+            });
+
             restorePerformanceScenarioConfigs();
+            renumberPerformanceScenarioConfigCards();
             lucide.createIcons();
         }
 
@@ -4184,11 +4542,29 @@
                         cachingInput.checked = true;
                     }
                 }
+
+                // -----------------------------------------------------
+                // EXPECTED RESULTS
+                // -----------------------------------------------------
+                const expectedMetrics = savedConfig.expected_metrics || {};
+                fields.parentElement?.querySelectorAll(".performance-expected-input").forEach((input) => {
+                    const key = input.dataset.expectedKey;
+                    if (!key || !Object.prototype.hasOwnProperty.call(expectedMetrics, key)) return;
+
+                    const savedValue = expectedMetrics[key];
+                    if (input.type === "checkbox") {
+                        input.checked = Boolean(savedValue);
+                    } else if (savedValue !== null && savedValue !== undefined) {
+                        input.value = String(savedValue);
+                    } else if (input.dataset.preserveDefault !== "true") {
+                        input.value = "";
+                    }
+                });
             });
         }
 
         function getSavedPerformanceConfigForTestCase(tc) {
-            const testCaseId = String(tc.id || "").trim();
+            const testCaseId = String(tc.performance_original_id || tc.id || "").trim();
 
             const testCaseScenario = String(tc.scenario || "").trim();
 
@@ -4259,7 +4635,71 @@
             return String(value);
         }
 
+        function formatConfiguredPerformanceExpectedMetrics(testCase) {
+            const metrics = testCase?.perf_config?.expected_metrics;
+            if (!metrics || typeof metrics !== "object") {
+                return "";
+            }
+
+            const lines = [];
+            const addMax = (key, label, suffix = " ms") => {
+                const value = metrics[key];
+                if (value !== null && value !== undefined && value !== "") {
+                    lines.push(`${label} ≤ ${value}${suffix}`);
+                }
+            };
+            const addMin = (key, label, suffix = "") => {
+                const value = metrics[key];
+                if (value !== null && value !== undefined && value !== "") {
+                    lines.push(`${label} ≥ ${value}${suffix}`);
+                }
+            };
+
+            addMax("p50_max_ms", "P50");
+            addMax("p95_max_ms", "P95");
+            addMax("p99_max_ms", "P99");
+            addMax("max_avg_ms", "Average Latency");
+            addMin("min_rps", "Throughput", " RPS");
+            addMax("max_error_rate_pct", "Error Rate", " %");
+            addMax("max_5xx", "5xx Responses", "");
+            addMax("max_429", "429 Responses", "");
+
+            if (metrics.threshold_rpm !== null && metrics.threshold_rpm !== undefined && metrics.threshold_rpm !== "") {
+                lines.push(`Rate-Limit Threshold: ${metrics.threshold_rpm} RPM`);
+                lines.push(`Below Threshold: ${metrics.below_threshold_status || "2xx"}`);
+                lines.push(`At / Above Threshold: ${metrics.above_threshold_status || "429"}`);
+            }
+
+            if (metrics.first_response_status !== null && metrics.first_response_status !== undefined && metrics.first_response_status !== "") {
+                lines.push(`First Response: HTTP ${metrics.first_response_status}`);
+            }
+            if (metrics.conditional_response_status !== null && metrics.conditional_response_status !== undefined && metrics.conditional_response_status !== "") {
+                lines.push(`Conditional Response: HTTP ${metrics.conditional_response_status}`);
+            }
+            if (metrics.require_any_cache_header) lines.push("Require ETag or Cache-Control: Yes");
+            if (metrics.require_etag) lines.push("Require ETag: Yes");
+            if (metrics.require_cache_control) lines.push("Require Cache-Control: Yes");
+
+            return lines.length ? lines.join(" • ") : "";
+        }
+
         function getPerformanceExpectedSummary(scenario) {
+            const hasConfiguredExpectedMetrics =
+                scenario?.perf_config &&
+                Object.prototype.hasOwnProperty.call(
+                    scenario.perf_config,
+                    "expected_metrics"
+                );
+
+            const configured = formatConfiguredPerformanceExpectedMetrics(scenario);
+            if (configured) {
+                return configured;
+            }
+
+            if (hasConfiguredExpectedMetrics) {
+                return "User-configured expected results: Not configured";
+            }
+
             const id = String(scenario?.id || "").toUpperCase();
             const expected = String(scenario?.expected || "").trim();
 
@@ -4314,6 +4754,19 @@
         }
 
         function getRequiredPerformancePercentiles(testCase) {
+            const configured = testCase?.perf_config?.expected_metrics;
+            if (configured && typeof configured === "object") {
+                const required = [];
+                if (configured.p50_max_ms !== null && configured.p50_max_ms !== undefined && configured.p50_max_ms !== "") required.push("P50");
+                if (configured.p95_max_ms !== null && configured.p95_max_ms !== undefined && configured.p95_max_ms !== "") required.push("P95");
+                if (configured.p99_max_ms !== null && configured.p99_max_ms !== undefined && configured.p99_max_ms !== "") required.push("P99");
+
+                return {
+                    required,
+                    showPercentiles: required.length > 0,
+                };
+            }
+
             const expected = String(testCase?.expected || "").toUpperCase();
 
             const required = [];
@@ -4346,32 +4799,35 @@
                 return Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(2)) : String(v);
             };
 
+            const configured = formatConfiguredPerformanceExpectedMetrics(testCase);
+            const prefix = configured ? `Expected (User Configured): ${configured}\n` : "";
+
             if (id.includes("PERF_BASELINE_01")) {
-                return `Expected metrics: P50/P95/P99, RPS, Error %, 2xx/4xx/5xx/429 distribution\nObserved: P50=${fmt(p50)} ms | P95=${fmt(p95)} ms | P99=${fmt(p99)} ms | RPS=${rps} | 5xx=${status5xx} | 429=${status429}`;
+                return `${prefix}Observed:\n• P50=${fmt(p50)} ms \n• P95=${fmt(p95)} ms \n• P99=${fmt(p99)} ms \n• RPS=${rps} \n• 5xx=${status5xx} \n• 429=${status429}`;
             }
             if (id.includes("PERF_EXPECTED_LOAD_02") || id.includes("PERF_PEAK_03")) {
-                return `Expected metrics: P95 within SLA, stable throughput and response time, no unexpected 5xx\nObserved: P95=${fmt(p95)} ms | RPS=${rps} | 5xx=${status5xx} | failures=${fail}/${req}`;
+                return `${prefix}Observed:\n• P95=${fmt(p95)} ms \n• RPS=${rps} \n• 5xx=${status5xx} \n• failures=${fail}/${req}`;
             }
             if (id.includes("PERF_STRESS_04") || id.includes("PERF_SPIKE_05")) {
-                return `Expected metrics: users/RPS, P50/P95/P99, error rate, 429/5xx\nObserved: P50=${fmt(p50)} ms | P95=${fmt(p95)} ms | P99=${fmt(p99)} ms | RPS=${rps} | 429=${status429} | 5xx=${status5xx}`;
+                return `${prefix}Observed:\n• P50=${fmt(p50)} ms \n• P95=${fmt(p95)} ms \n• P99=${fmt(p99)} ms \n• RPS=${rps} \n• 429=${status429} \n• 5xx=${status5xx}`;
             }
             if (id.includes("PERF_SOAK_06")) {
-                return `Expected metrics: response-time trend, throughput, 429/5xx, degradation/resource-growth indicators\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | 429=${status429} | 5xx=${status5xx}`;
+                return `${prefix}Observed:\n• Avg=${fmt(metrics?.avg_ms)} ms \n• Max=${fmt(metrics?.max_ms)} ms \n• RPS=${rps} \n• 429=${status429} \n• 5xx=${status5xx}`;
             }
             if (id.includes("PERF_VOLUME_07")) {
-                return `Expected metrics: latency, throughput and error rate\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | failures=${fail}/${req}`;
+                return `${prefix}Observed:\n• Avg=${fmt(metrics?.avg_ms)} ms \n• Max=${fmt(metrics?.max_ms)} ms \n• RPS=${rps} \n• failures=${fail}/${req}`;
             }
             if (id.includes("PERF_RATE_LIMIT_08")) {
-                return `Expected HTTP: 2xx below threshold / 429 above threshold\nObserved: RPS=${rps} | 429=${status429} | 4xx=${metrics?.status_4xx ?? "N/A"} | 5xx=${status5xx}`;
+                return `${prefix}Observed:\n• RPS=${rps} \n• RPM=${rps === "N/A" ? "N/A" : fmt(Number(rps) * 60)} \n• 429=${status429} \n• 4xx=${metrics?.status_4xx ?? "N/A"} \n• 5xx=${status5xx}`;
             }
             if (id.includes("PERF_RECOVERY_09")) {
-                return `Expected metrics: response time, throughput, error rate returning toward normal\nObserved: Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps} | failures=${fail}/${req}`;
+                return `${prefix}Observed:\n• Avg=${fmt(metrics?.avg_ms)} ms \n• Max=${fmt(metrics?.max_ms)} ms \n• RPS=${rps} \n• failures=${fail}/${req}`;
             }
             if (id.includes("PERF_CONCURRENCY_10")) {
-                return `Expected metrics: high simultaneous-request handling without unexpected failures/deadlocks\nObserved: Requests=${req} | failures=${fail} | Avg=${fmt(metrics?.avg_ms)} ms | RPS=${rps}`;
+                return `${prefix}Observed:\n• Requests=${req} \n• failures=${fail} \n• Avg=${fmt(metrics?.avg_ms)} ms \n• RPS=${rps}`;
             }
 
-            return `Observed: Requests=${req} | failures=${fail} | Avg=${fmt(metrics?.avg_ms)} ms | Max=${fmt(metrics?.max_ms)} ms | RPS=${rps}`;
+            return `${prefix}Observed:\n• Requests=${req} \n• failures=${fail} \n• Avg=${fmt(metrics?.avg_ms)} ms \n• Max=${fmt(metrics?.max_ms)} ms \n• RPS=${rps}`;
         }
 
         function getPerformancePassFailReason(testCase, metrics, isPass, failureDetails) {
@@ -4403,6 +4859,10 @@
                         );
                     }
                 }
+            }
+
+            if (Array.isArray(metrics?.expected_check_failures) && metrics.expected_check_failures.length) {
+                reasons.push(...metrics.expected_check_failures);
             }
 
             if (Array.isArray(failureDetails) && failureDetails.length) {
@@ -4624,6 +5084,21 @@
                 };
 
                 config.selected = isSelected;
+                config.expected_metrics = {};
+
+                card.querySelectorAll(".performance-expected-input").forEach((input) => {
+                    const key = input.dataset.expectedKey;
+                    if (!key) return;
+
+                    if (input.type === "checkbox") {
+                        config.expected_metrics[key] = input.checked;
+                        return;
+                    }
+
+                    const rawValue = String(input.value ?? "").trim();
+                    config.expected_metrics[key] = rawValue === "" ? null :
+                        (input.type === "number" ? Number(rawValue) : rawValue);
+                });
 
                 // -----------------------------------------------------
                 // Numeric performance configurations
@@ -5145,12 +5620,31 @@
             return result;
         }
 
+        function isPerformanceScenarioCase(testCase) {
+            const type = String(testCase?.type || "").trim().toLowerCase();
+            const id = String(
+                testCase?.id ||
+                testCase?.test_case_id ||
+                testCase?.test_case_number ||
+                ""
+            ).toUpperCase();
+            const scenario = String(testCase?.scenario || "").toLowerCase();
+
+            return (
+                type.includes("performance") ||
+                type.includes("load") ||
+                id.includes("_PERF_") ||
+                scenario.includes("caching headers") ||
+                scenario.includes("conditional get") ||
+                scenario.includes("if-none-match")
+            );
+        }
+
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
             allCases = [];
             const method = document.getElementById("method").value;
             const endpoint = document.getElementById("endpoint").value.trim();
-            const pathParameterValues = getPathParameterValues(endpoint, document.getElementById("search-txt").value);
             if (!method || !endpoint) {
                 showError("Method and Endpoint are required");
                 return;
@@ -5159,6 +5653,12 @@
             let paramType = "query";
             const paramRadio = document.querySelector('input[name="param_type"]:checked');
             if (paramRadio) paramType = paramRadio.value;
+
+            // The shared value input only supplies path parameters when Path
+            // mode is selected. Query values must never overwrite path values.
+            const pathParameterValues = paramType === "path"
+                ? getPathParameterValues(endpoint, document.getElementById("search-txt").value)
+                : {};
 
             const submitBtn = form.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
@@ -5199,12 +5699,31 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        data.test_cases.forEach((tc) => {
+                        const hasSavedPerformanceSelection =
+                            method !== "All" &&
+                            Object.keys(performanceScenarioConfigs).length > 0;
+
+                        const generatedCases = data.test_cases.filter((tc) => {
+                            const isPerformanceCase = isPerformanceScenarioCase(tc);
+
+                            if (!isPerformanceCase || !hasSavedPerformanceSelection) {
+                                return true;
+                            }
+
+                            // A saved performance configuration with selected=false
+                            // means the testcase must not enter the generated pool.
+                            return Boolean(getSavedPerformanceConfigForTestCase(tc));
+                        });
+
+                        let performanceDisplayNumber = 0;
+
+                        generatedCases.forEach((tc) => {
                             if (!tc.baseUrl && !tc.base_url) {
                                 tc.baseUrl = envUrl;
                             }
 
                             const savedPerformanceConfig = getSavedPerformanceConfigForTestCase(tc);
+                            const isPerformanceCase = isPerformanceScenarioCase(tc);
 
                             if (savedPerformanceConfig) {
                                 tc.perf_config = {
@@ -5213,7 +5732,15 @@
                                     spawn: savedPerformanceConfig.spawn,
                                     duration: savedPerformanceConfig.duration,
                                     unit: savedPerformanceConfig.unit,
+                                    expected_metrics: savedPerformanceConfig.expected_metrics || {},
+                                    selected: savedPerformanceConfig.selected !== false,
                                 };
+
+                                if (isPerformanceCase) {
+                                    performanceDisplayNumber += 1;
+                                    tc.performance_display_number = performanceDisplayNumber;
+                                    tc.performance_display_id = `PERF-${String(performanceDisplayNumber).padStart(2, "0")}`;
+                                }
                             } else {
                                 tc.perf_config = {};
                             }
@@ -5224,10 +5751,11 @@
                                 perf_config: tc.perf_config,
                             });
                         });
-                        data.test_cases.forEach((tc) => {
+
+                        generatedCases.forEach((tc) => {
                             tc.field_configs = JSON.parse(JSON.stringify(fieldConfigs));
                         });
-                        allCases = allCases.concat(data.test_cases);
+                        allCases = allCases.concat(generatedCases);
                     } else {
                         hasError = true;
                         errMsg = data.error || "Unknown error.";
@@ -5333,6 +5861,15 @@
 
             document.getElementById("suiteSelectAllCb").checked = true;
             document.getElementById("suiteSelectAllCb").indeterminate = false;
+
+            const exportButton = document.getElementById("suiteBuilderExportBtn");
+            if (exportButton) {
+                const hasScenarios = Array.isArray(window.testCasePool[key]) && window.testCasePool[key].length > 0;
+                exportButton.disabled = !hasScenarios;
+                exportButton.title = hasScenarios
+                    ? `Export all ${window.testCasePool[key].length} saved cases in this pool group to Excel`
+                    : "There are no test cases to export";
+            }
         }
 
         function saveTestSuite() {
@@ -5588,6 +6125,7 @@
             perfList.innerHTML = "";
             let hasPerf = false;
             let hasFunc = false;
+            let performanceDisplayCounter = 0;
 
             activeSuiteCases.forEach((tc, i) => {
                 const categoryType = (tc.type || "Positive").toLowerCase();
@@ -5607,8 +6145,14 @@
                     caseId.includes("_PERF_") ||
                     scenarioText.includes("conditional get") ||
                     scenarioText.includes("caching headers");
-                if (isPerf) hasPerf = true;
-                else hasFunc = true;
+                if (isPerf) {
+                    hasPerf = true;
+                    performanceDisplayCounter += 1;
+                    tc.performance_display_number = performanceDisplayCounter;
+                    tc.performance_display_id = `PERF-${String(performanceDisplayCounter).padStart(2, "0")}`;
+                } else {
+                    hasFunc = true;
+                }
 
                 const targetList = isPerf ? perfList : funcList;
 
@@ -5724,7 +6268,7 @@
                     <div style="display: flex; align-items: center; width: 100%; gap: 12px;">
                         <div class="checkbox-col"><input type="checkbox" class="test-case-checkbox" data-index="${i}" checked></div>
                         <div class="testcase-info">
-                            <div class="tc-id">TC-${tc.id || tc.test_case_id || tc.test_case_number || i + 1}</div>
+                            <div class="tc-id">TC-${isPerf ? (tc.performance_display_id || "PERF-01") : (tc.id || tc.test_case_id || tc.test_case_number || i + 1)}</div>
                             <div class="tc-scenario">${tc.scenario || "Test Scenario"}</div>
                             ${perfInputs}
                         </div>
@@ -7738,6 +8282,27 @@
 
             const start = performance.now();
 
+            // Keep execution context available through the complete
+            // function so the existing History update can use the same
+            // values after the API execution finishes.
+            let activeEndpoint =
+                selected[0]?.endpoint || "/";
+
+            let activeMethod =
+                selected[0]?.method || "GET";
+
+            let baseUrl =
+                selected[0]?.baseUrl ||
+                selected[0]?.base_url ||
+                "custom";
+
+            if (
+                baseUrl === "N/A" ||
+                baseUrl === "No-Base-URL"
+            ) {
+                baseUrl = "custom";
+            }
+
             try {
                 // =====================================================
                 // STEP 1 — PRE-EXECUTION VALIDATION
@@ -7779,13 +8344,21 @@
                 let serverResults = [];
 
                 if (casesForServer.length > 0) {
-                    const activeEndpoint = casesForServer[0].endpoint || "/";
+                    activeEndpoint =
+                        casesForServer[0].endpoint || "/";
 
-                    const activeMethod = casesForServer[0].method || "GET";
+                    activeMethod =
+                        casesForServer[0].method || "GET";
 
-                    let baseUrl = casesForServer[0].baseUrl || casesForServer[0].base_url || "custom";
+                    baseUrl =
+                        casesForServer[0].baseUrl ||
+                        casesForServer[0].base_url ||
+                        "custom";
 
-                    if (baseUrl === "N/A" || baseUrl === "No-Base-URL") {
+                    if (
+                        baseUrl === "N/A" ||
+                        baseUrl === "No-Base-URL"
+                    ) {
                         baseUrl = "custom";
                     }
 
@@ -8132,6 +8705,8 @@
                 return {
                     type: "caching",
                     value: normalizedCaching,
+                    expected_metrics: config.expected_metrics || {},
+                    selected: config.selected !== false,
                 };
             }
 
@@ -8189,6 +8764,8 @@
                 duration: numericDuration,
                 unit,
                 runTime,
+                expected_metrics: config.expected_metrics || {},
+                selected: config.selected !== false,
             };
         }
 
@@ -8387,7 +8964,7 @@ ${sampleOutput}
                 </span>
 
                 <div style="font-weight:600; flex:1">
-                    TC-${tc.id || tc.test_case_id || tc.test_case_number}
+                    TC-${tc.performance_display_id || tc.id || tc.test_case_id || tc.test_case_number}
                     - ${tc.scenario}
                 </div>
 
@@ -8435,7 +9012,7 @@ ${sampleOutput}
                 </span>
 
                 <div style="font-weight:600; flex:1">
-                    TC-${tc.id || tc.test_case_id || tc.test_case_number}
+                    TC-${tc.performance_display_id || tc.id || tc.test_case_id || tc.test_case_number}
                     - ${tc.scenario}
                 </div>
 
@@ -8548,20 +9125,28 @@ ${sampleOutput}
 
                     const p99 = formatPercentile(metrics.p99_ms);
 
-                    const p50Status = metrics.p50_pass ? "✅" : "❌";
+                    const p50Status = metrics.p50_pass === null || metrics.p50_pass === undefined
+                        ? "—"
+                        : (metrics.p50_pass ? "✅" : "❌");
 
-                    const p95Status = metrics.p95_pass ? "✅" : "❌";
+                    const p95Status = metrics.p95_pass === null || metrics.p95_pass === undefined
+                        ? "—"
+                        : (metrics.p95_pass ? "✅" : "❌");
 
-                    const p99Status = metrics.p99_pass ? "✅" : "❌";
+                    const p99Status = metrics.p99_pass === null || metrics.p99_pass === undefined
+                        ? "—"
+                        : (metrics.p99_pass ? "✅" : "❌");
 
                     const percentileRequirement = getRequiredPerformancePercentiles(tc);
 
-                    // Percentile results affect PASS/FAIL only when the
-                    // testcase expected result explicitly requires at least
-                    // one percentile metric.
                     const percentilePassed =
                         !percentileRequirement.showPercentiles ||
-                        metrics.percentile_passed === true;
+                        metrics.percentile_passed !== false;
+
+                    const expectedChecksPassed =
+                        metrics.expected_checks_passed !== undefined
+                            ? metrics.expected_checks_passed === true
+                            : percentilePassed;
 
                     totalReqs += parseInt(reqMade, 10) || 0;
 
@@ -8569,7 +9154,7 @@ ${sampleOutput}
 
                     const isPass =
                         (parseInt(failCount, 10) || 0) === 0 &&
-                        percentilePassed;
+                        expectedChecksPassed;
 
                     if (isPass) passed++;
 
@@ -8630,10 +9215,10 @@ Result:
 ${getPerformancePassFailReason(tc, metrics, isPass, failureDetails)}
 
 ${percentileRequirement.showPercentiles ? `
-Percentile Metrics:
-• P50 = ${p50} ms (threshold: < 500 ms) ${p50Status}
-• P95 = ${p95} ms (threshold: < 1,000 ms) ${p95Status}
-• P99 = ${p99} ms (threshold: < 2,000 ms) ${p99Status}
+Expected Percentile Metrics (Default Thresholds):
+• P50 = ${p50} ms (threshold: < 500 ms) 
+• P95 = ${p95} ms (threshold: < 1,000 ms) 
+• P99 = ${p99} ms (threshold: < 2,000 ms) 
 
 Percentile Result: ${percentilePassed ? "PASS" : "FAIL"}
 ` : ""}
@@ -8643,7 +9228,7 @@ ${sampleOutput}`;
                     item.innerHTML = `
                         <div class="result-header">
                             <span class="badge ${isPass ? "badge-success" : "badge-danger"}">${isPass ? "PASS" : "FAIL"}</span>
-                            <div style="font-weight:600; flex:1">TC-${tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div>
+                            <div style="font-weight:600; flex:1">TC-${tc.performance_display_id || tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div>
                             <div class="badge" style="background: #f3e8ff; color: #6b21a8;">PERFORMANCE</div>
                         </div>
                         <div class="result-details">${details}</div>
@@ -8670,7 +9255,7 @@ ${sampleOutput}`;
                     const item = document.createElement("div");
                     item.className = "result-item";
                     item.style.borderLeft = `4px solid var(--danger)`;
-                    item.innerHTML = `<div class="result-header"><span class="badge badge-danger">ERROR</span><div style="font-weight:600; flex:1">TC-${tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div></div><div class="result-details">Execution failed: ${e.message}</div>`;
+                    item.innerHTML = `<div class="result-header"><span class="badge badge-danger">ERROR</span><div style="font-weight:600; flex:1">TC-${tc.performance_display_id || tc.id || tc.test_case_id || tc.test_case_number} - ${tc.scenario}</div></div><div class="result-details">Execution failed: ${e.message}</div>`;
                     perfResultsList.appendChild(item);
 
                     completeCurrentPerformanceEstimateCase(
