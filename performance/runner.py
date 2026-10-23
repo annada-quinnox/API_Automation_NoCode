@@ -170,87 +170,260 @@ def _parse_percentile(value):
         return None
 
 
-def _build_locust_metrics(row):
+def _coerce_expected_number(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_expected_metrics(raw_metrics):
+    if not isinstance(raw_metrics, dict):
+        return {}
+
+    normalized = {}
+
+    numeric_keys = {
+        "p50_max_ms",
+        "p95_max_ms",
+        "p99_max_ms",
+        "min_rps",
+        "max_error_rate_pct",
+        "max_5xx",
+        "max_429",
+        "max_avg_ms",
+        "threshold_rpm",
+        "first_response_status",
+        "conditional_response_status",
+    }
+
+    for key, value in raw_metrics.items():
+        if key in numeric_keys:
+            normalized[key] = _coerce_expected_number(value)
+        elif key in {
+            "below_threshold_status",
+            "above_threshold_status",
+        }:
+            normalized[key] = str(value).strip() if value is not None else ""
+        elif key in {
+            "require_any_cache_header",
+            "require_etag",
+            "require_cache_control",
+        }:
+            normalized[key] = bool(value)
+
+    return normalized
+
+
+def _build_locust_metrics(row, expected_metrics=None):
     """
-    Build the Locust metrics returned to the frontend,
-    including P50/P95/P99 SLA evaluation.
+    Build Locust metrics. When expected_metrics contains user-configured
+    thresholds, percentile pass/fail is calculated from those thresholds.
+    Otherwise the historic 500/1000/2000 ms thresholds remain as fallback.
     """
+
+    expected_metrics = expected_metrics or {}
 
     p50 = _parse_percentile(row.get("50%"))
     p95 = _parse_percentile(row.get("95%"))
     p99 = _parse_percentile(row.get("99%"))
 
-    p50_pass = (
-        p50 is not None
-        and p50 < PERCENTILE_THRESHOLDS["p50"]
+    configured_percentiles = {
+        "p50": expected_metrics.get("p50_max_ms"),
+        "p95": expected_metrics.get("p95_max_ms"),
+        "p99": expected_metrics.get("p99_max_ms"),
+    }
+
+    has_configured_percentiles = any(
+        value is not None
+        for value in configured_percentiles.values()
     )
 
-    p95_pass = (
-        p95 is not None
-        and p95 < PERCENTILE_THRESHOLDS["p95"]
-    )
+    if has_configured_percentiles:
+        p50_pass = (
+            None
+            if configured_percentiles["p50"] is None
+            else p50 is not None and p50 <= configured_percentiles["p50"]
+        )
+        p95_pass = (
+            None
+            if configured_percentiles["p95"] is None
+            else p95 is not None and p95 <= configured_percentiles["p95"]
+        )
+        p99_pass = (
+            None
+            if configured_percentiles["p99"] is None
+            else p99 is not None and p99 <= configured_percentiles["p99"]
+        )
 
-    p99_pass = (
-        p99 is not None
-        and p99 < PERCENTILE_THRESHOLDS["p99"]
-    )
+        required_passes = [
+            result for result in (p50_pass, p95_pass, p99_pass)
+            if result is not None
+        ]
+        percentile_passed = bool(required_passes) and all(required_passes)
+    else:
+        p50_pass = (
+            p50 is not None
+            and p50 < PERCENTILE_THRESHOLDS["p50"]
+        )
+        p95_pass = (
+            p95 is not None
+            and p95 < PERCENTILE_THRESHOLDS["p95"]
+        )
+        p99_pass = (
+            p99 is not None
+            and p99 < PERCENTILE_THRESHOLDS["p99"]
+        )
+        percentile_passed = p50_pass and p95_pass and p99_pass
 
     return {
-        "requests_made": row.get(
-            "Request Count",
-            "0"
-        ),
-
-        "failures": row.get(
-            "Failure Count",
-            "0"
-        ),
-
-        "median_ms": row.get(
-            "Median Response Time",
-            "0"
-        ),
-
-        "avg_ms": row.get(
-            "Average Response Time",
-            "0"
-        ),
-
-        "max_ms": row.get(
-            "Max Response Time",
-            "0"
-        ),
-
-        "rps": row.get(
-            "Requests/s",
-            "0"
-        ),
-
-        "p50_ms": (
-            p50 if p50 is not None
-            else "N/A"
-        ),
-
-        "p95_ms": (
-            p95 if p95 is not None
-            else "N/A"
-        ),
-
-        "p99_ms": (
-            p99 if p99 is not None
-            else "N/A"
-        ),
-
+        "requests_made": row.get("Request Count", "0"),
+        "failures": row.get("Failure Count", "0"),
+        "median_ms": row.get("Median Response Time", "0"),
+        "avg_ms": row.get("Average Response Time", "0"),
+        "max_ms": row.get("Max Response Time", "0"),
+        "rps": row.get("Requests/s", "0"),
+        "p50_ms": p50 if p50 is not None else "N/A",
+        "p95_ms": p95 if p95 is not None else "N/A",
+        "p99_ms": p99 if p99 is not None else "N/A",
         "p50_pass": p50_pass,
         "p95_pass": p95_pass,
         "p99_pass": p99_pass,
-
-        "percentile_passed": (
-            p50_pass
-            and p95_pass
-            and p99_pass
-        )
+        "percentile_passed": percentile_passed,
     }
+
+
+def _evaluate_expected_metrics(metrics, status_counts, expected_metrics, performance_type):
+    """
+    Evaluate only the user-configured expectations that apply to the run.
+    Unconfigured fields do not affect PASS/FAIL.
+    """
+
+    expected_metrics = expected_metrics or {}
+    failures = []
+
+    requests_made = _coerce_expected_number(metrics.get("requests_made")) or 0.0
+    rps = _coerce_expected_number(metrics.get("rps")) or 0.0
+    avg_ms = _coerce_expected_number(metrics.get("avg_ms")) or 0.0
+    error_rate_pct = (
+        (float(metrics.get("failures", 0)) / requests_made) * 100.0
+        if requests_made > 0
+        else 0.0
+    )
+
+    metrics["error_rate_pct"] = round(error_rate_pct, 2)
+
+    percentile_failures = []
+    for key, label, metric_key in [
+        ("p50_max_ms", "P50", "p50_ms"),
+        ("p95_max_ms", "P95", "p95_ms"),
+        ("p99_max_ms", "P99", "p99_ms"),
+    ]:
+        threshold = expected_metrics.get(key)
+        if threshold is None:
+            continue
+
+        observed = _coerce_expected_number(metrics.get(metric_key))
+        passed = observed is not None and observed <= threshold
+        metrics[f"{label.lower()}_pass"] = passed
+        if not passed:
+            percentile_failures.append(
+                f"{label} exceeded configured maximum of {threshold:g} ms (observed {observed if observed is not None else 'N/A'} ms)."
+            )
+
+    if percentile_failures:
+        failures.extend(percentile_failures)
+
+    min_rps = expected_metrics.get("min_rps")
+    if min_rps is not None and rps < min_rps:
+        failures.append(
+            f"Throughput was below the configured minimum of {min_rps:g} RPS (observed {rps:g} RPS)."
+        )
+
+    max_avg_ms = expected_metrics.get("max_avg_ms")
+    if max_avg_ms is not None and avg_ms > max_avg_ms:
+        failures.append(
+            f"Average latency exceeded the configured maximum of {max_avg_ms:g} ms (observed {avg_ms:g} ms)."
+        )
+
+    max_error_rate = expected_metrics.get("max_error_rate_pct")
+    if max_error_rate is not None and error_rate_pct > max_error_rate:
+        failures.append(
+            f"Error rate exceeded the configured maximum of {max_error_rate:g}% (observed {error_rate_pct:g}%)."
+        )
+
+    max_5xx = expected_metrics.get("max_5xx")
+    if max_5xx is not None and status_counts.get("5xx", 0) > max_5xx:
+        failures.append(
+            f"5xx responses exceeded the configured maximum of {max_5xx:g} (observed {status_counts.get('5xx', 0)})."
+        )
+
+    max_429 = expected_metrics.get("max_429")
+    if max_429 is not None and status_counts.get("429", 0) > max_429:
+        failures.append(
+            f"429 responses exceeded the configured maximum of {max_429:g} (observed {status_counts.get('429', 0)})."
+        )
+
+    if performance_type == "rate_limit":
+        threshold_rpm = expected_metrics.get("threshold_rpm")
+        if threshold_rpm is not None:
+            observed_rpm = rps * 60.0
+            metrics["observed_rpm"] = round(observed_rpm, 2)
+
+            below_status = expected_metrics.get("below_threshold_status") or "2xx"
+            above_status = expected_metrics.get("above_threshold_status") or "429"
+
+            if observed_rpm < threshold_rpm:
+                # Validate the expected response class itself rather than
+                # comparing the custom status-listener count with Locust's
+                # request count. Those two sources can differ slightly due
+                # to Locust's request/statistics lifecycle, and a 2xx count
+                # larger than the request count should not turn an otherwise
+                # valid below-threshold run into a failure.
+                if below_status == "2xx":
+                    unexpected = (
+                        status_counts.get("3xx", 0)
+                        + status_counts.get("4xx", 0)
+                        + status_counts.get("5xx", 0)
+                        + status_counts.get("429", 0)
+                    )
+                    if unexpected > 0:
+                        failures.append(
+                            f"Below the configured {threshold_rpm:g} RPM threshold, the expected status was 2xx; observed unexpected non-2xx responses: {unexpected}."
+                        )
+                elif below_status == "3xx":
+                    unexpected = (
+                        status_counts.get("2xx", 0)
+                        + status_counts.get("4xx", 0)
+                        + status_counts.get("5xx", 0)
+                        + status_counts.get("429", 0)
+                    )
+                    if unexpected > 0:
+                        failures.append(
+                            f"Below the configured {threshold_rpm:g} RPM threshold, the expected status was 3xx; observed unexpected non-3xx responses: {unexpected}."
+                        )
+            else:
+                if above_status == "429" and status_counts.get("429", 0) <= 0:
+                    failures.append(
+                        f"At/above the configured {threshold_rpm:g} RPM threshold, no HTTP 429 response was observed."
+                    )
+                elif above_status == "2xx":
+                    unexpected = (
+                        status_counts.get("3xx", 0)
+                        + status_counts.get("4xx", 0)
+                        + status_counts.get("5xx", 0)
+                        + status_counts.get("429", 0)
+                    )
+                    if unexpected > 0:
+                        failures.append(
+                            f"At/above the configured {threshold_rpm:g} RPM threshold, the expected status was 2xx; observed unexpected non-2xx responses: {unexpected}."
+                        )
+
+    metrics["expected_check_failures"] = failures
+    metrics["expected_checks_passed"] = len(failures) == 0
+    return metrics
 
 def build_url(endpoint, base_url):
     base_url = (base_url or "").rstrip("/")
@@ -361,6 +534,11 @@ def _normalize_performance_configuration(performance_config):
         return {
             "type": "caching",
             "value": "Yes" if normalized_value == "yes" else "No",
+            "expected_metrics": _normalize_expected_metrics(
+                performance_config.get("expected_metrics")
+                or performance_config.get("expectedMetrics")
+                or {}
+            ),
         }, None
 
     users_raw = performance_config.get("value")
@@ -439,6 +617,11 @@ def _normalize_performance_configuration(performance_config):
         "duration_text": duration_text,
         "unit": unit,
         "run_time": f"{duration_text}{unit_suffix}",
+        "expected_metrics": _normalize_expected_metrics(
+            performance_config.get("expected_metrics")
+            or performance_config.get("expectedMetrics")
+            or {}
+        ),
     }, None
 
 
@@ -564,7 +747,7 @@ def _read_locust_failure_details(csv_file_failures):
     return failure_details
 
 
-def _read_locust_metrics(csv_file_stats):
+def _read_locust_metrics(csv_file_stats, expected_metrics=None):
     if not os.path.exists(csv_file_stats):
         return {}
 
@@ -577,13 +760,13 @@ def _read_locust_metrics(csv_file_stats):
 
         for row in reader:
             if row.get("Name") == "Aggregated":
-                return _build_locust_metrics(row)
+                return _build_locust_metrics(row, expected_metrics)
 
         file.seek(0)
         reader = csv.DictReader(file)
 
         for row in reader:
-            return _build_locust_metrics(row)
+            return _build_locust_metrics(row, expected_metrics)
 
     return {}
 
@@ -722,6 +905,7 @@ def run_performance_test(data):
             endpoint=current_endpoint,
             method=method,
             payload=payload,
+            expected_metrics=normalized_config.get("expected_metrics") or {},
             scenario_id=(
                 data.get("scenarioId")
                 or test_case.get("id")
@@ -830,7 +1014,8 @@ def run_performance_test(data):
         csv_file_failures = f"{csv_prefix}_failures.csv"
 
         failure_details = _read_locust_failure_details(csv_file_failures)
-        metrics = _read_locust_metrics(csv_file_stats)
+        expected_metrics = normalized_config.get("expected_metrics") or {}
+        metrics = _read_locust_metrics(csv_file_stats, expected_metrics)
         status_counts = _read_status_metrics(status_metrics_file)
 
         if not metrics:
@@ -867,6 +1052,13 @@ def run_performance_test(data):
             "status_5xx": status_counts["5xx"],
             "status_429": status_counts["429"],
         })
+
+        metrics = _evaluate_expected_metrics(
+            metrics,
+            status_counts,
+            expected_metrics,
+            performance_type,
+        )
 
         return {
             "success": True,
